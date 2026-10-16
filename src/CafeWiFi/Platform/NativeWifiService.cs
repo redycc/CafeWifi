@@ -35,6 +35,13 @@ public sealed class NativeWifiService : IWifi
         return link is { } l ? new WifiLink(l.Ssid, Bssid.Normalize(l.Bssid)) : new WifiLink(i.ProfileName, null);
     }
 
+    public string? CurrentPassword()
+    {
+        var i = Interface();
+        if (i is null || !i.IsConnected || string.IsNullOrEmpty(i.ProfileName)) return null;
+        return WlanProfileKey.Read(i.Id, i.ProfileName);
+    }
+
     public async Task<IReadOnlyList<Bss>> ScanAsync(CancellationToken ct = default)
     {
         var i = Interface();

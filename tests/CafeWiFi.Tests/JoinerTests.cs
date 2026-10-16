@@ -19,6 +19,10 @@ internal sealed class FakeWifi : IWifi
 
     public WifiLink? CurrentLink() => Link;
 
+    /// <summary>The password Windows saved for the network we're on, if readable.</summary>
+    public string? CurrentKey { get; set; }
+    public string? CurrentPassword() => Link is null ? null : CurrentKey;
+
     public Task<IReadOnlyList<Bss>> ScanAsync(CancellationToken ct = default)
     {
         Scans++;
@@ -366,6 +370,54 @@ public class JoinerTests : IDisposable
         await Task.WhenAll(auto, manual);
         Assert.Equal(1, wifi.Disconnects);
         Assert.Equal(new[] { "a1", "typed" }, wifi.Joins.Select(x => x.Password));
+    }
+
+    [Fact]
+    public async Task Manual_OnBrandSsid_Unlearned_LearnsRouterWithWindowsKey()
+    {
+        var j = Make();
+        wifi.Link = new WifiLink("LouisaCoffee", Strong);
+        wifi.CurrentKey = "a2";
+        await j.ConnectAsync(Louisa, Yanping);
+        Assert.Empty(wifi.Joins);
+        Assert.Equal(new Learned("louisa/延平門市", "a2"), Learned.Lookup(Strong));
+        Assert.Equal("a2", Learned.Lookup(Medium)?.Password);  // a second router heard well
+        Assert.Null(Learned.Lookup(Weak));
+        Assert.Equal(new Status.Connected("延平門市", "LouisaCoffee"), Last);
+        Assert.Equal("延平門市", j.CurrentStoreLabel());
+    }
+
+    [Fact]
+    public async Task Manual_OnBrandSsid_LearnedAsAnotherStore_IsCorrected()
+    {
+        Learned.Remember(new[] { Strong }, new StoreKey("louisa", "北門門市"), "b1");
+        var j = Make();
+        wifi.Link = new WifiLink("LouisaCoffee", Strong);
+        wifi.CurrentKey = "a1";
+        await j.ConnectAsync(Louisa, Yanping);
+        Assert.Equal(new Learned("louisa/延平門市", "a1"), Learned.Lookup(Strong));
+    }
+
+    [Fact]
+    public async Task Manual_OnBrandSsid_AlreadyLearnedAsThisStore_DoesNotRescan()
+    {
+        Learned.Remember(new[] { Strong }, new StoreKey("louisa", "延平門市"), "a1");
+        var j = Make();
+        wifi.Link = new WifiLink("LouisaCoffee", Strong);
+        wifi.CurrentKey = "a1";
+        await j.ConnectAsync(Louisa, Yanping);
+        Assert.Equal(0, wifi.Scans);
+        Assert.Equal(new Status.Connected("延平門市", "LouisaCoffee"), Last);
+    }
+
+    [Fact]
+    public async Task Manual_OnBrandSsid_KeyUnreadable_OnlyReportsConnected()
+    {
+        var j = Make();
+        wifi.Link = new WifiLink("LouisaCoffee", Strong);
+        await j.ConnectAsync(Louisa, Yanping);
+        Assert.Null(Learned.Lookup(Strong));
+        Assert.Equal(new Status.Connected(null, "LouisaCoffee"), Last);
     }
 
     [Fact]

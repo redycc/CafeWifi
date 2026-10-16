@@ -16,6 +16,9 @@ public interface IWifi
     /// <summary>Null when Wi-Fi isn't associated with anything.</summary>
     WifiLink? CurrentLink();
 
+    /// <summary>The password Windows saved for the network we're on, or null if it can't be read.</summary>
+    string? CurrentPassword();
+
     /// <summary>Asks for a fresh scan (waiting up to 4 s), then returns every router in range.</summary>
     Task<IReadOnlyList<Bss>> ScanAsync(CancellationToken ct = default);
 

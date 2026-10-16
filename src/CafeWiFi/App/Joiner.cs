@@ -176,6 +176,7 @@ public sealed class Joiner
         {
             if (brand.Ssids.Contains(link.Ssid ?? "", StringComparer.OrdinalIgnoreCase))
             {
+                await LearnCurrent(link, new StoreKey(brand.Id, store.Name));
                 Report(CurrentStatus(), notify: true);
                 return;
             }
@@ -212,6 +213,23 @@ public sealed class Joiner
         // Let the user read why and pick again; auto shouldn't retry this store underneath them.
         Snooze(nets);
         Report(new Status.Failed(password is not null ? $"密碼 {password} 無法連上{label}" : $"無法連上{label}，請確認門市與密碼"), notify: true);
+    }
+
+    /// <summary>
+    /// Already on the brand's Wi-Fi (joined by Windows, not us) and the user says which store
+    /// this is: remember this router with the password Windows used, so it's recognized from now on.
+    /// </summary>
+    private async Task LearnCurrent(WifiLink link, StoreKey store)
+    {
+        if (link.Bssid is null || learned.Lookup(link.Bssid)?.Store == store.ToString()) return;
+        if (wifi.CurrentPassword() is not { Length: > 0 } password)
+        {
+            Log.Write("cannot read the current network's password; nothing learned");
+            return;
+        }
+        var nets = (await wifi.ScanAsync()).Where(b => b.Ssid == link.Ssid && b.Rssi > RememberRssi).Select(b => b.Bssid);
+        learned.Remember(nets.Prepend(link.Bssid).Distinct(), store, password);
+        Log.Write($"learned {link.Bssid} as {store}");
     }
 
     // MARK: helpers
