@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Manual probe for docs/spike-wifi.md. Not part of the shipped app. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\CafeWiFi\CafeWiFi.csproj" />
+  </ItemGroup>
+</Project>

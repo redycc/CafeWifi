@@ -1,0 +1,36 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{55985AD2-F839-4CB2-A013-30977478E6B9}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CafeWiFi", "src\CafeWiFi\CafeWiFi.csproj", "{A70ABBC2-588F-4688-8ABB-1E8C769B51D4}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{1758E04B-46EB-4110-B540-77D7411A3259}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CafeWiFi.Tests", "tests\CafeWiFi.Tests\CafeWiFi.Tests.csproj", "{F10C0E66-218C-4880-A115-EAB2226D5C3D}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{A70ABBC2-588F-4688-8ABB-1E8C769B51D4}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A70ABBC2-588F-4688-8ABB-1E8C769B51D4}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A70ABBC2-588F-4688-8ABB-1E8C769B51D4}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A70ABBC2-588F-4688-8ABB-1E8C769B51D4}.Release|Any CPU.Build.0 = Release|Any CPU
+		{F10C0E66-218C-4880-A115-EAB2226D5C3D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F10C0E66-218C-4880-A115-EAB2226D5C3D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F10C0E66-218C-4880-A115-EAB2226D5C3D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F10C0E66-218C-4880-A115-EAB2226D5C3D}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{A70ABBC2-588F-4688-8ABB-1E8C769B51D4} = {55985AD2-F839-4CB2-A013-30977478E6B9}
+		{F10C0E66-218C-4880-A115-EAB2226D5C3D} = {1758E04B-46EB-4110-B540-77D7411A3259}
+	EndGlobalSection
+EndGlobal

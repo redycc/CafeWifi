@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <UseWindowsForms>true</UseWindowsForms>
+    <AssemblyName>CafeWiFi</AssemblyName>
+    <RootNamespace>CafeWiFi</RootNamespace>
+    <ApplicationIcon>Resources\icons\app.ico</ApplicationIcon>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <Product>CafeWiFi</Product>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <AssemblyMetadata Include="GitHubRepo" Value="$(GitHubRepo)" />
+    <InternalsVisibleTo Include="CafeWiFi.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="..\..\data\brands\*.json" LogicalName="brands.%(Filename).json" />
+    <EmbeddedResource Include="Resources\stats.html" LogicalName="stats.html" />
+    <EmbeddedResource Include="Resources\icons\*.ico" LogicalName="icons.%(Filename).ico" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="ManagedNativeWifi" Version="2.7.0" />
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2903.40" />
+  </ItemGroup>
+
+</Project>

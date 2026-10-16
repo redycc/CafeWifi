@@ -1,0 +1,12 @@
+<Project>
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <SupportedOSPlatformVersion>10.0.19041.0</SupportedOSPlatformVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <Version Condition="'$(Version)' == ''">0.1.0</Version>
+    <!-- owner/repo used by the updater; CI sets it, local builds leave it empty (updater off). -->
+    <GitHubRepo Condition="'$(GitHubRepo)' == ''"></GitHubRepo>
+  </PropertyGroup>
+</Project>
