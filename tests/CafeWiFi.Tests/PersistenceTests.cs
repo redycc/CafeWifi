@@ -107,6 +107,21 @@ public class PersistenceTests : IDisposable
     }
 
     [Fact]
+    public void Tracker_Tick_AddsAMinuteOnlyOnCafeWifi()
+    {
+        var usage = new UsageStore(dir.File("usage.json"));
+        StoreKey? current = null;
+        using var tracker = new CafeWiFi.App.Tracker(() => current, usage);
+        var day = new DateOnly(2026, 10, 16);
+        tracker.Tick(day);
+        Assert.Empty(usage.Snapshot());
+        current = new StoreKey("louisa", "A");
+        tracker.Tick(day);
+        tracker.Tick(day);
+        Assert.Equal(120, usage.Snapshot()["2026-10-16"]["louisa/A"]);
+    }
+
+    [Fact]
     public void Settings_DefaultsAndRoundTrip()
     {
         var path = dir.File("settings.json");
