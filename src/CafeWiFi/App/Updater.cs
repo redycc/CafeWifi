@@ -18,12 +18,15 @@ public sealed class Updater
     private static readonly HttpClient Http = CreateClient();
     private readonly Settings settings;
     private readonly Action<string> notify;
+    private readonly Action quit;
     private System.Threading.Timer? timer;
 
-    public Updater(Settings settings, Action<string> notify)
+    /// <param name="quit">Exits the app cleanly; called from a worker thread, so it must marshal to the UI.</param>
+    public Updater(Settings settings, Action<string> notify, Action quit)
     {
         this.settings = settings;
         this.notify = notify;
+        this.quit = quit;
     }
 
     public static string Current { get; } = VersionCompare.Strip(
@@ -108,7 +111,7 @@ public sealed class Updater
                 WindowStyle = ProcessWindowStyle.Hidden,
             });
             Log.Write($"updating to {update.Version}");
-            System.Windows.Forms.Application.Exit();
+            quit();
         }
         catch (Exception ex) when (ex is HttpRequestException or IOException or InvalidDataException or TaskCanceledException
                                        or System.ComponentModel.Win32Exception)
@@ -156,11 +159,11 @@ public sealed class Updater
         tasklist /FI "PID eq %PID%" /NH 2>nul | find "%PID%" >nul && (timeout /t 1 /nobreak >nul & goto wait)
         move /Y "%EXE%" "%EXE%.old" >nul || goto fail
         move /Y "%NEW%" "%EXE%" >nul || (move /Y "%EXE%.old" "%EXE%" >nul & goto fail)
-        start "" "%EXE%"
+        start "" "%EXE%" --startup
         del "%EXE%.old" >nul 2>&1
         exit /b 0
         :fail
-        start "" "%EXE%"
+        start "" "%EXE%" --startup
         exit /b 1
         """;
 }

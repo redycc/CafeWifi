@@ -10,7 +10,7 @@ namespace CafeWiFi.App;
 /// </summary>
 public sealed class Joiner
 {
-    private static readonly TimeSpan Snooze = TimeSpan.FromMinutes(10);
+    private static readonly TimeSpan SnoozeFor = TimeSpan.FromMinutes(10);
     private static readonly TimeSpan Quiet = TimeSpan.FromSeconds(15);
     private const int RememberRssi = -75;
 
@@ -71,7 +71,11 @@ public sealed class Joiner
         if (!autoEnabled() || Interlocked.Exchange(ref autoQueued, 1) == 1) return;
         int e = Volatile.Read(ref epoch);
         await queue.WaitAsync();
-        try { await RunAuto(manual: false, e); }
+        try
+        {
+            // A user action that arrived while we waited outranks this run.
+            if (Current(e)) await RunAuto(manual: false, e);
+        }
         finally
         {
             queue.Release();
@@ -132,13 +136,13 @@ public sealed class Joiner
         }
         var brand = catalog.BrandForSsid(best.Ssid)!;
         var nets = bss.Where(b => b.Ssid == best.Ssid).OrderByDescending(b => b.Rssi).ToList();
-        var key = nets[0].Bssid;
-        if (snoozed.TryGetValue(key, out var until) && until > clock()) return;
+        if (IsSnoozed(nets)) return;
 
         var tries = AttemptPlanner.ForAuto(brand, nets.Select(n => n.Bssid).ToList(), learned, catalog, locator.Location);
+        if (!Current(e)) return;
         if (tries.Count == 0)
         {
-            snoozed[key] = clock() + Snooze;
+            Snooze(nets);
             Report(new Status.Failed(locator.Authorized ? "無法辨識門市，請從選單選擇" : "請允許定位，以自動尋找附近門市"), notify: true);
             return;
         }
@@ -155,7 +159,7 @@ public sealed class Joiner
             }
         }
         if (!Current(e)) return;
-        snoozed[key] = clock() + Snooze;
+        Snooze(nets);
         Report(new Status.Failed("自動連線失敗，請從選單選擇門市"), notify: true);
     }
 
@@ -205,6 +209,8 @@ public sealed class Joiner
             }
         }
         if (!Current(e)) return;
+        // Let the user read why and pick again; auto shouldn't retry this store underneath them.
+        Snooze(nets);
         Report(new Status.Failed(password is not null ? $"密碼 {password} 無法連上{label}" : $"無法連上{label}，請確認門市與密碼"), notify: true);
     }
 
@@ -222,9 +228,21 @@ public sealed class Joiner
         }
         catch (OperationCanceledException)
         {
+            // We stopped waiting, but Windows may still finish the join with this password.
+            // Drop it so the user's action starts clean instead of finding us "connected".
+            if (wifi.CurrentLink()?.Ssid == nets[0].Ssid) wifi.Disconnect();
             return false;
         }
     }
+
+    /// <summary>A store has several routers whose signal order changes, so snooze all of them.</summary>
+    private void Snooze(IEnumerable<Bss> nets)
+    {
+        foreach (var n in nets) snoozed[n.Bssid] = clock() + SnoozeFor;
+    }
+
+    private bool IsSnoozed(IEnumerable<Bss> nets) =>
+        nets.Any(n => snoozed.TryGetValue(n.Bssid, out var until) && until > clock());
 
     /// <summary>Remember the strongest router plus every router heard well, so the store is recognized from any of them.</summary>
     private void Remember(IReadOnlyList<Bss> nets, StoreKey store, string password) =>

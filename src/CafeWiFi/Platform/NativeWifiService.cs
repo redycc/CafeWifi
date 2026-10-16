@@ -18,7 +18,7 @@ public sealed class NativeWifiService : IWifi
     private static InterfaceConnectionInfo? Interface()
     {
         try { return NativeWifi.EnumerateInterfaceConnections().FirstOrDefault(); }
-        catch (Exception ex) when (ex is Win32Exception or InvalidOperationException)
+        catch (Exception ex) when (ex is Win32Exception or InvalidOperationException or DllNotFoundException or EntryPointNotFoundException)
         {
             Log.Write($"wlan unavailable: {ex.Message}");
             return null;
@@ -54,6 +54,13 @@ public sealed class NativeWifiService : IWifi
             Log.Write($"scan failed: {ex.Message}");
             return Array.Empty<Bss>();
         }
+    }
+
+    public void Disconnect()
+    {
+        if (Interface() is not { } i) return;
+        try { NativeWifi.DisconnectNetwork(i.Id); }
+        catch (Exception ex) when (ex is Win32Exception or InvalidOperationException) { Log.Write($"disconnect failed: {ex.Message}"); }
     }
 
     public async Task<bool> TryJoinAsync(Bss target, string password, CancellationToken ct = default)

@@ -59,7 +59,7 @@
   .bar-row:hover { background: var(--hover); }
   .bar-row.selected { background: var(--accent-soft); }
   .bar-row .name { width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .bar-row .track { flex: 1; height: 14px; }
+  .bar-row .track { flex: 1; height: 14px; overflow: hidden; }
   .bar-row .fill { height: 14px; border-radius: 3px; background: var(--bar); min-width: 2px; }
   .bar-row .time { width: 110px; text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
   .empty { color: var(--muted); }
@@ -177,7 +177,8 @@ function render() {
 
 function bars(rows, selected, empty, onClick) {
   if (!rows.length) return el("div", "empty", empty);
-  const max = rows[0].seconds;
+  // Years arrive newest first, not longest first.
+  const max = Math.max(...rows.map(r => r.seconds));
   const wrap = el("div", "bars");
   for (const r of rows) {
     const row = el("div", "bar-row" + (r.id === selected ? " selected" : ""));

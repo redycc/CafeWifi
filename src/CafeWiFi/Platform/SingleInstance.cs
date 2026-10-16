@@ -10,7 +10,7 @@ namespace CafeWiFi.Platform;
 /// </summary>
 public static class SingleInstance
 {
-    private static readonly string Id = $"CafeWiFi-{Environment.UserName}";
+    private static readonly string Id = $"CafeWiFi-{System.Diagnostics.Process.GetCurrentProcess().SessionId}-{Environment.UserName}";
     private static Mutex? mutex;
 
     public static bool TryAcquire()

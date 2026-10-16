@@ -19,6 +19,7 @@ public sealed class TrayController : IDisposable
     private readonly Updater updater;
     private readonly Action showStats;
     private readonly Action exit;
+    private readonly System.Windows.Forms.Timer leftClick = new() { Interval = SystemInformation.DoubleClickTime };
     private Status status = new Status.Idle();
 
     public TrayController(Joiner joiner, BrandCatalog catalog, ILocator locator, Settings settings, Updater updater,
@@ -28,12 +29,18 @@ public sealed class TrayController : IDisposable
             (joiner, catalog, locator, settings, updater, showStats, exit);
         menu.Opening += (_, _) => Rebuild();
         icon.ContextMenuStrip = menu;
-        icon.DoubleClick += (_, _) => showStats();
-        // Left click opens the same menu, like the Mac menu bar.
-        icon.MouseClick += (_, e) =>
+        // Left click opens the same menu, like the Mac menu bar; double click opens stats.
+        // The first click of a double click also arrives as a click, so wait to see which it is.
+        leftClick.Tick += (_, _) =>
         {
-            if (e.Button != MouseButtons.Left) return;
+            leftClick.Stop();
             typeof(NotifyIcon).GetMethod("ShowContextMenu", BindingFlags.Instance | BindingFlags.NonPublic)?.Invoke(icon, null);
+        };
+        icon.MouseClick += (_, e) => { if (e.Button == MouseButtons.Left) leftClick.Start(); };
+        icon.DoubleClick += (_, _) =>
+        {
+            leftClick.Stop();
+            showStats();
         };
         Update(joiner.CurrentStatus());
         icon.Visible = !settings.HideTrayIcon;
@@ -241,6 +248,7 @@ public sealed class TrayController : IDisposable
 
     public void Dispose()
     {
+        leftClick.Dispose();
         icon.Visible = false;
         icon.Dispose();
         menu.Dispose();

@@ -38,6 +38,17 @@ public class PersistenceTests : IDisposable
     }
 
     [Fact]
+    public void JsonFile_CorruptFile_FallsBackToPreviousSave()
+    {
+        var path = dir.File("x.json");
+        JsonFile.Save(path, new Sample { N = 1 });
+        JsonFile.Save(path, new Sample { N = 2 });     // N = 1 is now the .bak
+        System.IO.File.WriteAllText(path, "\0\0\0");  // e.g. torn by a power cut
+        Assert.Equal(1, JsonFile.Load<Sample>(path).N);
+        Assert.True(System.IO.File.Exists(path + ".bad"));
+    }
+
+    [Fact]
     public void JsonFile_ConcurrentSaves_AllSucceed()
     {
         var path = dir.File("x.json");

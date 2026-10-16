@@ -4,31 +4,52 @@ using System.Text.Json;
 namespace CafeWiFi.Core;
 
 /// <summary>
-/// Small JSON files that survive crashes: writes go to .tmp first, and a file that won't
-/// parse is set aside as .bad so the app starts fresh instead of failing.
+/// Small JSON files that survive crashes: each save is flushed to disk under a temp name
+/// and swapped in, keeping the previous version as .bak. A file that won't parse is set
+/// aside as .bad and the .bak is used instead, or a fresh start if there is none.
 /// </summary>
 public static class JsonFile
 {
     public static readonly JsonSerializerOptions Options = new(JsonSerializerDefaults.Web)
     {
         WriteIndented = true,
-        // Keep store names readable (門市, not 門市); these files never land in HTML.
+        // Keep store names readable instead of \uXXXX escapes; these files never land in HTML.
         Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
     };
 
     public static T Load<T>(string path) where T : new()
     {
-        if (!File.Exists(path)) return new T();
+        if (TryRead<T>(path, out var value)) return value;
+        if (File.Exists(path))
+        {
+            Log.Write($"corrupt {path}, keeping it as .bad");
+            try { File.Move(path, path + ".bad", overwrite: true); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+        }
+        if (TryRead<T>(path + ".bak", out var previous))
+        {
+            Log.Write($"restored {path} from .bak");
+            return previous;
+        }
+        return new T();
+    }
+
+    private static bool TryRead<T>(string path, out T value) where T : new()
+    {
+        value = new T();
+        if (!File.Exists(path)) return false;
         try
         {
-            var value = JsonSerializer.Deserialize<T>(File.ReadAllText(path), Options);
-            if (value is not null) return value;
+            if (JsonSerializer.Deserialize<T>(File.ReadAllText(path), Options) is not { } v) return false;
+            value = v;
+            return true;
         }
-        catch (JsonException) { }
-        catch (IOException ex) { Log.Write($"cannot read {path}: {ex.Message}"); return new T(); }
-        Log.Write($"corrupt {path}, keeping it as .bad");
-        try { File.Move(path, path + ".bad", overwrite: true); } catch (IOException) { }
-        return new T();
+        catch (JsonException) { return false; }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Log.Write($"cannot read {path}: {ex.Message}");
+            return false;
+        }
     }
 
     private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, object> Gates =
@@ -38,13 +59,18 @@ public static class JsonFile
     public static void Save<T>(string path, T value)
     {
         var full = Path.GetFullPath(path);
-        var json = JsonSerializer.Serialize(value, Options);
+        var bytes = JsonSerializer.SerializeToUtf8Bytes(value, Options);
         lock (Gates.GetOrAdd(full, _ => new object()))
         {
             Directory.CreateDirectory(Path.GetDirectoryName(full)!);
             var tmp = full + ".tmp";
-            File.WriteAllText(tmp, json);
-            File.Move(tmp, full, overwrite: true);
+            using (var file = new FileStream(tmp, FileMode.Create, FileAccess.Write, FileShare.None))
+            {
+                file.Write(bytes);
+                file.Flush(flushToDisk: true); // a power cut must not leave a torn file behind
+            }
+            if (File.Exists(full)) File.Replace(tmp, full, full + ".bak", ignoreMetadataErrors: true);
+            else File.Move(tmp, full);
         }
     }
 }

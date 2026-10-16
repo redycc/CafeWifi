@@ -21,6 +21,9 @@ public interface IWifi
 
     /// <summary>Writes a profile for target.Ssid with this password and joins that exact router.</summary>
     Task<bool> TryJoinAsync(Bss target, string password, CancellationToken ct = default);
+
+    /// <summary>Leaves the current network.</summary>
+    void Disconnect();
 }
 
 public interface IConnectivity

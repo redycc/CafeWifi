@@ -26,7 +26,7 @@ public sealed class CafeApp : ApplicationContext
         joiner = new Joiner(wifi, locator, new Connectivity(), catalog, new LearnedStore(Paths.Learned),
             () => settings.AutoConnect, () => DateTimeOffset.Now);
         tracker = new Tracker(joiner.CurrentStoreKey, usage);
-        updater = new Updater(settings, text => Notifier.Show(text));
+        updater = new Updater(settings, text => Notifier.Show(text), () => ui.Post(_ => Quit(), null));
         tray = new TrayController(joiner, catalog, locator, settings, updater, ShowStats, Quit);
         ui = SynchronizationContext.Current ?? new WindowsFormsSynchronizationContext();
 

@@ -25,10 +25,21 @@ internal sealed class FakeWifi : IWifi
         return Task.FromResult<IReadOnlyList<Bss>>(Nearby.ToList());
     }
 
+    /// <summary>Models Windows finishing a WlanConnect we stopped waiting for.</summary>
+    public bool JoinLandsEvenIfCancelled { get; set; }
+    public int Disconnects { get; private set; }
+
+    public void Disconnect()
+    {
+        Disconnects++;
+        Link = null;
+    }
+
     public async Task<bool> TryJoinAsync(Bss target, string password, CancellationToken ct = default)
     {
         Joins.Add((target.Bssid, password));
         JoinStarted.TrySetResult();
+        if (JoinLandsEvenIfCancelled && CorrectPasswords.Contains(password)) Link = new WifiLink(target.Ssid, target.Bssid);
         if (Gate is { } g) await g.Task.WaitAsync(ct);
         if (!CorrectPasswords.Contains(password)) return false;
         Link = new WifiLink(target.Ssid, target.Bssid);
@@ -302,6 +313,59 @@ public class JoinerTests : IDisposable
         wifi.CorrectPasswords.Add("a1");
         await j.ConnectNearestAsync();
         Assert.Equal(new Status.Connected("延平門市", "LouisaCoffee"), Last);
+    }
+
+    [Fact]
+    public async Task Auto_QueuedBehindUser_ThenSuperseded_DoesNothing()
+    {
+        wifi.Gate = new TaskCompletionSource();
+        var j = Make();
+        var first = j.ConnectAsync(Louisa, Yanping, "x1");      // holds the queue
+        await wifi.JoinStarted.Task;
+        var auto = j.AutoConnectAsync();                         // waits behind it
+        var second = j.ConnectAsync(Louisa, Yanping, "x2");     // supersedes both
+        wifi.Gate.SetResult();
+        await Task.WhenAll(first, auto, second);
+        Assert.Equal(new[] { "x1", "x2" }, wifi.Joins.Select(x => x.Password));
+        Assert.Equal(2, wifi.Scans); // the two user runs; the stale auto run never scanned
+    }
+
+    [Fact]
+    public async Task Auto_SnoozeHoldsWhenStrongestRouterSwaps()
+    {
+        var j = Make();
+        await j.AutoConnectAsync();
+        int joins = wifi.Joins.Count;
+        wifi.Nearby[0] = wifi.Nearby[0] with { Rssi = -72 };    // Medium (-70) is now strongest
+        now = now.AddSeconds(60);
+        await j.AutoConnectAsync();
+        Assert.Equal(joins, wifi.Joins.Count);
+    }
+
+    [Fact]
+    public async Task Manual_Failure_KeepsAutoFromTakingOver()
+    {
+        var j = Make();
+        await j.ConnectAsync(Louisa, Yanping, "0000");
+        await j.AutoConnectAsync();
+        Assert.Single(wifi.Joins);
+        Assert.Equal(new Status.Failed("密碼 0000 無法連上延平門市"), Last);
+    }
+
+    [Fact]
+    public async Task Interrupted_JoinThatLanded_IsDisconnected()
+    {
+        wifi.Gate = new TaskCompletionSource();
+        wifi.CorrectPasswords.Add("a1");
+        wifi.JoinLandsEvenIfCancelled = true;
+        var j = Make();
+        var auto = j.AutoConnectAsync();
+        await wifi.JoinStarted.Task;
+        var manual = j.ConnectAsync(Louisa, Yanping, "typed");
+        wifi.Gate.SetResult();
+        await Task.WhenAll(auto, manual);
+        Assert.Equal(1, wifi.Disconnects);
+        Assert.Equal(new[] { "a1", "typed" }, wifi.Joins.Select(x => x.Password));
     }
 
     [Fact]
