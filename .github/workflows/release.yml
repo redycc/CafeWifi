@@ -1,0 +1,34 @@
+# Push a v* tag (or let refresh-stores call this) to build and publish a release.
+# The app's updater looks for CafeWiFi-win-x64.zip on the latest release.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_call:
+    inputs:
+      tag:
+        type: string
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    env:
+      TAG: ${{ inputs.tag || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - run: ./build.ps1 -Version $env:TAG.TrimStart('v') -Repo "${{ github.repository }}"
+        shell: pwsh
+      - run: gh release create "$env:TAG" build/CafeWiFi-win-x64.zip --generate-notes
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}

@@ -29,8 +29,8 @@
 - C# / .NET 8，WinForms 系統匣 App，TFM 為 `net8.0-windows10.0.19041.0`，以便使用 WinRT 的 `Windows.Devices.Geolocation`。
 - Wi-Fi：`ManagedNativeWifi`（NuGet），包裝 Windows Native Wifi API（`wlanapi.dll`）。
 - 統計視窗：WebView2（`Microsoft.Web.WebView2`），用 HTML/CSS 繪製。WebView2 Runtime 是 Windows 11 內建的；沒有的話，視窗會顯示下載連結。
-- 通知：`NotifyIcon.ShowBalloonTip`（Windows 10/11 會自動轉成系統通知），不用額外套件。
-- 發布方式：`dotnet publish -r win-x64 --self-contained -p:PublishSingleFile=true`，輸出 `CafeWiFi.exe`，打包成 `CafeWiFi-win-x64.zip`。
+- 通知：Windows toast（`Microsoft.Toolkit.Uwp.Notifications`）。原本打算用 `NotifyIcon.ShowBalloonTip`，但系統匣圖示隱藏時氣球通知不會顯示，而原版在圖示隱藏時仍會通知，所以改用 toast（實作時的變更）。
+- 發布方式：`dotnet publish -r win-x64 --self-contained -p:PublishSingleFile=true`，輸出 `CafeWiFi.exe`（實測約 75 MB），打包成 `CafeWiFi-win-x64.zip`（約 69 MB）。
 - 測試：xUnit。
 - 抓取腳本：Python 3（只用標準函式庫），跟原版一樣。
 
@@ -232,7 +232,7 @@ data/brands/louisa.json
 
 - 日誌寫到 `%LOCALAPPDATA%\CafeWiFi\CafeWiFi.log`，超過 1 MB 時輪替。
 - 所有 JSON 都先寫到 `.tmp`，再用 `File.Replace`／`Move` 取代，避免寫到一半損毀。讀取失敗時當作空資料處理，並把壞掉的檔案改名成 `.bad` 保留下來。
-- 開機自動啟動：在 `HKCU\...\Run` 寫入 `CafeWiFi = "<exe 路徑>"`。選單的勾選狀態直接讀登錄機碼。
+- 開機自動啟動：在 `HKCU\...\Run` 寫入 `CafeWiFi = "<exe 路徑>" --startup`。`--startup` 啟動時不會把隱藏的圖示叫回來。選單的勾選狀態直接讀登錄機碼。
 
 ## 12. 錯誤處理
 

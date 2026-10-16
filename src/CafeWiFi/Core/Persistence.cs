@@ -9,7 +9,12 @@ namespace CafeWiFi.Core;
 /// </summary>
 public static class JsonFile
 {
-    public static readonly JsonSerializerOptions Options = new(JsonSerializerDefaults.Web) { WriteIndented = true };
+    public static readonly JsonSerializerOptions Options = new(JsonSerializerDefaults.Web)
+    {
+        WriteIndented = true,
+        // Keep store names readable (門市, not 門市); these files never land in HTML.
+        Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+    };
 
     public static T Load<T>(string path) where T : new()
     {
