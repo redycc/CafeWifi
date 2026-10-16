@@ -57,8 +57,22 @@ switch (cmd)
         Console.WriteLine($"online: {await new CafeWiFi.Platform.Connectivity().IsOnlineAsync()}");
         break;
     }
+    case "locate":
+    {
+        var settings = CafeWiFi.App.Settings.Load(Path.Combine(Path.GetTempPath(), "cafewifi-spike-settings.json"));
+        var locator = new CafeWiFi.Platform.WindowsLocator(settings);
+        await locator.StartAsync();
+        Console.WriteLine($"authorized: {locator.Authorized}, location: {locator.Location}");
+        if (locator.Location is { } here)
+        {
+            var catalog = CafeWiFi.Core.BrandCatalog.LoadDefault(null);
+            foreach (var n in catalog.Nearest(here, 3))
+                Console.WriteLine($"  {n.Store.Name}  {CafeWiFi.Core.Geo.Format(n.Meters)}  [{string.Join(", ", n.Store.Passwords)}]");
+        }
+        break;
+    }
     default:
-        Console.WriteLine("usage: scan | profile | service | join <ssid> <password>");
+        Console.WriteLine("usage: scan | profile | service | locate | join <ssid> <password>");
         return 2;
 }
 return 0;
