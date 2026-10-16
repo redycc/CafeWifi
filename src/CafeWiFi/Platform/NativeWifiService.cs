@@ -76,7 +76,8 @@ public sealed class NativeWifiService : IWifi
         if (i is null) return false;
         try
         {
-            if (!NativeWifi.SetProfile(i.Id, ProfileType.AllUser, ProfileXml.Build(target.Ssid, password), null, true))
+            var profile = password.Length == 0 ? ProfileXml.BuildOpen(target.Ssid) : ProfileXml.Build(target.Ssid, password);
+            if (!NativeWifi.SetProfile(i.Id, ProfileType.AllUser, profile, null, true))
             {
                 Log.Write($"SetProfile refused for {target.Ssid}");
                 return false;

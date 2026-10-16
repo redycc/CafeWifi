@@ -12,6 +12,17 @@ public static class AttemptPlanner
     public const double MaxMeters = 5000;
 
     /// <summary>
+    /// Open networks are auto-joined only this close to a real store (or on a router we know):
+    /// anyone can broadcast "Starbucks WiFi", and an open network will take anyone.
+    /// </summary>
+    public const double OpenMeters = 300;
+
+    /// <summary>The open brand's store we're standing in, judged by location.</summary>
+    public static StoreKey? NearestOpenStore(Brand brand, BrandCatalog catalog, GeoPoint? here) =>
+        here is { } h && catalog.Nearest(h, 1, brandId: brand.Id) is [var n] && n.Meters <= OpenMeters
+            ? new StoreKey(brand.Id, n.Store.Name) : null;
+
+    /// <summary>
     /// Routers we've joined before, then the nearest stores' candidates interleaved
     /// (every store's best guess before anyone's second guess).
     /// </summary>
@@ -20,6 +31,12 @@ public static class AttemptPlanner
         BrandCatalog catalog, GeoPoint? here)
     {
         var tries = LearnedFor(brand, bssids, learned).ToList();
+        if (brand.IsOpen)
+        {
+            // Nothing to guess: one open join, labeled with the router's store or the one we're at.
+            if (tries.Count > 0) return new[] { tries[0] };
+            return NearestOpenStore(brand, catalog, here) is { } store ? new[] { new Attempt(store, "") } : Array.Empty<Attempt>();
+        }
         if (here is { } h)
         {
             var near = catalog.Nearest(h, NearestStores, brandId: brand.Id)
@@ -37,6 +54,7 @@ public static class AttemptPlanner
         LearnedStore learned, string? password)
     {
         var key = new StoreKey(brand.Id, store.Name);
+        if (brand.IsOpen) return new[] { new Attempt(key, "") };
         if (password is not null) return new[] { new Attempt(key, password) };
         var tries = LearnedFor(brand, bssids, learned).Where(a => a.Store == key)
             .Concat(store.Passwords.Select(p => new Attempt(key, p)));

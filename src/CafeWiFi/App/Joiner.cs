@@ -120,9 +120,10 @@ public sealed class Joiner
             return;
         }
         if (!manual && clock() < quietUntil) return;
-        if (wifi.CurrentLink() is not null)
+        if (wifi.CurrentLink() is { } linked)
         {
             if (manual) Report(CurrentStatus(), notify: true);
+            else LearnOpenByLocation(linked);
             return;
         }
         if (!manual && await net.IsOnlineAsync()) return; // e.g. on Ethernet; don't add Wi-Fi
@@ -140,6 +141,12 @@ public sealed class Joiner
 
         var tries = AttemptPlanner.ForAuto(brand, nets.Select(n => n.Bssid).ToList(), learned, catalog, locator.Location);
         if (!Current(e)) return;
+        if (tries.Count == 0 && brand.IsOpen)
+        {
+            // An open network with no store of that brand around: not necessarily the real one. Stay away quietly.
+            Snooze(nets);
+            return;
+        }
         if (tries.Count == 0)
         {
             Snooze(nets);
@@ -212,17 +219,20 @@ public sealed class Joiner
         if (!Current(e)) return;
         // Let the user read why and pick again; auto shouldn't retry this store underneath them.
         Snooze(nets);
-        Report(new Status.Failed(password is not null ? $"密碼 {password} 無法連上{label}" : $"無法連上{label}，請確認門市與密碼"), notify: true);
+        Report(new Status.Failed(brand.IsOpen ? $"無法連上{label}"
+            : password is not null ? $"密碼 {password} 無法連上{label}" : $"無法連上{label}，請確認門市與密碼"), notify: true);
     }
 
     /// <summary>
     /// Already on the brand's Wi-Fi (joined by Windows, not us) and the user says which store
-    /// this is: remember this router with the password Windows used, so it's recognized from now on.
+    /// this is: remember this router (with the password Windows used, if any) so it's recognized from now on.
     /// </summary>
     private async Task LearnCurrent(WifiLink link, StoreKey store)
     {
         if (link.Bssid is null || learned.Lookup(link.Bssid)?.Store == store.ToString()) return;
-        if (wifi.CurrentPassword() is not { Length: > 0 } password)
+        // Open networks have no password to learn; otherwise use the one Windows joined with.
+        var password = catalog.Brand(store.BrandId)?.IsOpen == true ? "" : wifi.CurrentPassword();
+        if (password is null || password.Length == 0 && catalog.Brand(store.BrandId)?.IsOpen != true)
         {
             Log.Write("cannot read the current network's password; nothing learned");
             return;
@@ -230,6 +240,16 @@ public sealed class Joiner
         var nets = (await wifi.ScanAsync()).Where(b => b.Ssid == link.Ssid && b.Rssi > RememberRssi).Select(b => b.Bssid);
         learned.Remember(nets.Prepend(link.Bssid).Distinct(), store, password);
         Log.Write($"learned {link.Bssid} as {store}");
+    }
+
+    /// <summary>On an open brand's network that Windows joined: name the router after the store we're standing in.</summary>
+    private void LearnOpenByLocation(WifiLink link)
+    {
+        if (link.Bssid is null || catalog.BrandForSsid(link.Ssid) is not { IsOpen: true } brand) return;
+        if (learned.Lookup(link.Bssid) is not null) return;
+        if (AttemptPlanner.NearestOpenStore(brand, catalog, locator.Location) is not { } store) return;
+        learned.Remember(new[] { link.Bssid }, store, "");
+        Log.Write($"learned {link.Bssid} as {store} by location");
     }
 
     // MARK: helpers

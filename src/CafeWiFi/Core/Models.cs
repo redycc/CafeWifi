@@ -10,9 +10,14 @@ public sealed record Store(string Name, string Address, string City, string Phon
     public GeoPoint Location => new(Lat, Lng);
 }
 
-/// <summary>A cafe chain: every store broadcasts one of <see cref="Ssids"/>.</summary>
-public sealed record Brand(string Id, string Name, IReadOnlyList<string> Ssids, IReadOnlyList<Store> Stores)
+/// <summary>
+/// A cafe chain: every store broadcasts one of <see cref="Ssids"/>. Security is "wpa2psk"
+/// (the default: a password per store) or "open" (no password, usually a terms page after joining).
+/// </summary>
+public sealed record Brand(string Id, string Name, IReadOnlyList<string> Ssids, IReadOnlyList<Store> Stores, string? Security = null)
 {
+    public bool IsOpen => string.Equals(Security, "open", StringComparison.OrdinalIgnoreCase);
+
     public Store? Named(string name) => Stores.FirstOrDefault(s => s.Name == name);
 }
 

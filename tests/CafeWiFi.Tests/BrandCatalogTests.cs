@@ -76,6 +76,26 @@ public class BrandCatalogTests
     }
 
     [Fact]
+    public void Security_DefaultsToPasswordNetworks_OpenWhenSaid()
+    {
+        var c = BrandCatalog.Load(new[]
+        {
+            BrandJson("louisa", "LouisaCoffee"),
+            "{\"id\":\"starbucks\",\"name\":\"星巴克\",\"ssids\":[\"Starbucks WiFi\"],\"security\":\"open\",\"stores\":[]}",
+        }, Array.Empty<string>());
+        Assert.False(c.Brand("louisa")!.IsOpen);
+        Assert.True(c.Brand("starbucks")!.IsOpen);
+    }
+
+    [Fact]
+    public void LoadDefault_HasStarbucksAsOpenNetwork()
+    {
+        var sbux = BrandCatalog.LoadDefault(userBrandsDir: null).BrandForSsid("Starbucks WiFi");
+        Assert.True(sbux?.IsOpen);
+        Assert.True(sbux!.Stores.Count > 400);
+    }
+
+    [Fact]
     public void BrandForSsid_IsCaseInsensitive_AndNullForUnknown()
     {
         var c = Sample();

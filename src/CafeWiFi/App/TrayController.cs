@@ -143,7 +143,8 @@ public sealed class TrayController : IDisposable
     /// <summary>For when the password is posted on the wall: the nearest store's candidates, or type one.</summary>
     private ToolStripMenuItem? PasswordMenu()
     {
-        if (locator.Location is not { } here || catalog.Nearest(here, 1) is not [var (brand, store, _)]) return null;
+        // Open networks (e.g. Starbucks) have no passwords to pick from.
+        if (locator.Location is not { } here || catalog.Nearest(here, 1, (b, _) => !b.IsOpen) is not [var (brand, store, _)]) return null;
         var item = new ToolStripMenuItem("用密碼連線");
         item.DropDownItems.Add(Disabled(Label(brand, store)));
         foreach (var p in PasswordItems(brand, store)) item.DropDownItems.Add(p);
@@ -156,6 +157,8 @@ public sealed class TrayController : IDisposable
             var city = new ToolStripMenuItem($"{group.City}（{group.Stores.Count}）");
             Lazy(city, () => group.Stores.Select(store =>
             {
+                // No passwords to choose between: clicking the store connects.
+                if (brand.IsOpen) return (ToolStripItem)StoreItem(store, store.Name, () => Connect(brand, store));
                 var item = StoreItem(store, store.Name, null);
                 Lazy(item, () =>
                     new ToolStripItem[] { Action("自動嘗試", () => Connect(brand, store)), new ToolStripSeparator() }

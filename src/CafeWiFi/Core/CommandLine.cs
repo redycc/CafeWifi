@@ -1,8 +1,9 @@
 namespace CafeWiFi.Core;
 
 /// <summary>
-/// What a launch asks for. Kinds: show, connect, nearest, stats, update, startup
-/// (launched at sign-in: run quietly without bringing back a hidden icon).
+/// What a launch asks for. Kinds: show, connect, nearest, stats, update, capture-portal
+/// (save the terms page of the open network we're on), startup (launched at sign-in: run
+/// quietly without bringing back a hidden icon).
 /// </summary>
 public sealed record Command(string Kind, string? Store = null, string? Brand = null);
 
@@ -26,6 +27,7 @@ public static class CommandLine
                 case "--stats": kind ??= "stats"; break;
                 case "--update": kind ??= "update"; break;
                 case "--startup": kind ??= "startup"; break;
+                case "--capture-portal": kind ??= "capture-portal"; break;
                 case "--show": kind ??= "show"; break;
                 default:
                     if (kind == "connect" && !args[i].StartsWith("--", StringComparison.Ordinal)) store.Add(args[i]);

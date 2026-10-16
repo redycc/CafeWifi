@@ -51,6 +51,18 @@ public class ProfileXmlTests
     }
 
     [Fact]
+    public void BuildOpen_HasNoKey()
+    {
+        var root = XDocument.Parse(ProfileXml.BuildOpen("Starbucks WiFi")).Root!;
+        Assert.Equal("Starbucks WiFi", root.Element(Ns + "name")!.Value);
+        var auth = root.Descendants(Ns + "authEncryption").Single();
+        Assert.Equal("open", auth.Element(Ns + "authentication")!.Value);
+        Assert.Equal("none", auth.Element(Ns + "encryption")!.Value);
+        Assert.Empty(root.Descendants(Ns + "sharedKey"));
+        Assert.Equal("manual", root.Element(Ns + "connectionMode")!.Value);
+    }
+
+    [Fact]
     public void Build_SixtyFourHexDigits_IsRawNetworkKey()
     {
         var key = Root("X", new string('a', 64)).Descendants(Ns + "sharedKey").Single();

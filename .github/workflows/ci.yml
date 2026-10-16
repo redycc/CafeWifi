@@ -17,5 +17,6 @@ jobs:
         with:
           python-version: "3.12"
       - run: python scripts/test_louisa.py
+      - run: python scripts/test_starbucks.py
       - run: ./build.ps1
         shell: pwsh

@@ -1,3 +1,5 @@
+using System.Diagnostics;
+using System.Globalization;
 using System.Net.NetworkInformation;
 using CafeWiFi.Core;
 using CafeWiFi.Platform;
@@ -15,6 +17,8 @@ public sealed class CafeApp : ApplicationContext
     private readonly Tracker tracker;
     private readonly Updater updater;
     private readonly TrayController tray;
+    private readonly PortalCapture portalCapture = new();
+    private readonly PortalWatcher portal;
     private readonly SynchronizationContext ui;
     private readonly System.Windows.Forms.Timer autoTimer = new() { Interval = 15_000 };
     private StatsForm? stats;
@@ -22,9 +26,12 @@ public sealed class CafeApp : ApplicationContext
     public CafeApp(Command first)
     {
         var wifi = new NativeWifiService();
+        var net = new Connectivity();
         locator = new WindowsLocator(settings);
-        joiner = new Joiner(wifi, locator, new Connectivity(), catalog, new LearnedStore(Paths.Learned),
+        joiner = new Joiner(wifi, locator, net, catalog, new LearnedStore(Paths.Learned),
             () => settings.AutoConnect, () => DateTimeOffset.Now);
+        portal = new PortalWatcher(wifi, net, catalog, PortalDir, dir => portalCapture.CaptureAsync(dir),
+            () => DateTimeOffset.Now, (text, dir) => Notifier.Show(text, "open:" + dir));
         tracker = new Tracker(joiner.CurrentStoreKey, usage);
         updater = new Updater(settings, text => Notifier.Show(text), () => ui.Post(_ => Quit(), null));
         tray = new TrayController(joiner, catalog, locator, settings, updater, ShowStats, Quit);
@@ -43,7 +50,11 @@ public sealed class CafeApp : ApplicationContext
         locator.Changed += Auto;
         NetworkChange.NetworkAvailabilityChanged += (_, _) => Auto();
         NetworkChange.NetworkAddressChanged += (_, _) => Auto();
-        autoTimer.Tick += (_, _) => Auto();
+        autoTimer.Tick += (_, _) =>
+        {
+            Auto();
+            TrayController.Run(portal.CheckAsync);
+        };
         autoTimer.Start();
         tracker.Start();
         updater.Start();
@@ -66,9 +77,30 @@ public sealed class CafeApp : ApplicationContext
         Notifier.Show("請允許「位置」權限，CafeWiFi 才能讀取 Wi-Fi 並找到最近的門市。點這裡開啟設定。", "location");
     }
 
+    private static string PortalDir => Path.Combine(Paths.LocalDir, "portal");
+
     private void OnToast(string action)
     {
         if (action == "location") TrayController.OpenLocationSettings();
+        else if (action.StartsWith("open:", StringComparison.Ordinal) && Directory.Exists(action[5..]))
+            Process.Start(new ProcessStartInfo("explorer.exe", $"\"{action[5..]}\"") { UseShellExecute = true });
+    }
+
+    /// <summary>"--capture-portal": save whatever terms page the current network shows, on request.</summary>
+    private async Task CapturePortalNowAsync()
+    {
+        var dir = Path.Combine(PortalDir, "manual-" + DateTimeOffset.Now.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture));
+        try
+        {
+            var result = await portalCapture.CaptureAsync(dir);
+            if (result.IsPortal) Notifier.Show("條款頁已存好，點這裡打開資料夾。", "open:" + dir);
+            else Notifier.Show("目前可以正常上網，沒有偵測到條款頁。");
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or IOException)
+        {
+            Log.Write($"portal capture failed: {ex.Message}");
+            Notifier.Show("擷取條款頁失敗，請確認已連上咖啡廳的 Wi-Fi。");
+        }
     }
 
     /// <summary>A command from this launch or a later one (forwarded over the pipe).</summary>
@@ -93,6 +125,9 @@ public sealed class CafeApp : ApplicationContext
                 break;
             case "stats":
                 ShowStats();
+                break;
+            case "capture-portal":
+                TrayController.Run(CapturePortalNowAsync);
                 break;
             case "update":
                 TrayController.Run(() => updater.Available is null ? updater.CheckAsync(manual: true) : updater.InstallAsync());

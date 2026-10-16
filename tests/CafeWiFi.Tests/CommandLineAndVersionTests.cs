@@ -17,6 +17,7 @@ public class CommandLineAndVersionTests
     [InlineData(new[] { "--update" }, "update", null, null)]
     [InlineData(new[] { "--bogus" }, "show", null, null)]
     [InlineData(new[] { "--startup" }, "startup", null, null)]
+    [InlineData(new[] { "--capture-portal" }, "capture-portal", null, null)]
     public void Parse(string[] args, string kind, string? store, string? brand)
     {
         Assert.Equal(new Command(kind, store, brand), CommandLine.Parse(args));

@@ -85,6 +85,54 @@ public class AttemptPlannerTests : IDisposable
         Assert.DoesNotContain("x1", Pw(plan));
     }
 
+    // Open brand: ~110 m and ~1.1 km from Here.
+    private static readonly Brand Sbux = new("starbucks", "星巴克", new[] { "Starbucks WiFi" }, new[]
+    {
+        S("近店", 25.0488, 121.5170),
+        S("遠店", 25.0578, 121.5170),
+    }, "open");
+    private static readonly BrandCatalog OpenCatalog = BrandCatalog.Load(
+        new[] { System.Text.Json.JsonSerializer.Serialize(Sbux, BrandCatalog.Json) }, Array.Empty<string>());
+    private static Brand O => OpenCatalog.Brand("starbucks")!;
+
+    [Fact]
+    public void Open_Auto_NearestStoreWithin300m_NoPassword()
+    {
+        var plan = AttemptPlanner.ForAuto(O, Bssids, Learned(), OpenCatalog, Here);
+        Assert.Equal(new[] { new Attempt(new StoreKey("starbucks", "近店"), "") }, plan);
+    }
+
+    [Fact]
+    public void Open_Auto_NothingNearby_NoAttempt()
+    {
+        // ~1.1 km from the nearest store: could be a fake hotspot using the name, so don't auto-join.
+        Assert.Empty(AttemptPlanner.ForAuto(O, Bssids, Learned(), OpenCatalog, new GeoPoint(25.0378, 121.5170)));
+        Assert.Empty(AttemptPlanner.ForAuto(O, Bssids, Learned(), OpenCatalog, null));
+    }
+
+    [Fact]
+    public void Open_Auto_LearnedRouter_EvenWithoutLocation()
+    {
+        var learned = Learned();
+        learned.Remember(new[] { Bssids[1] }, new StoreKey("starbucks", "遠店"), "");
+        var plan = AttemptPlanner.ForAuto(O, Bssids, learned, OpenCatalog, null);
+        Assert.Equal(new[] { new Attempt(new StoreKey("starbucks", "遠店"), "") }, plan);
+    }
+
+    [Fact]
+    public void Open_Store_SingleOpenAttempt_IgnoresPassword()
+    {
+        Assert.Equal(new[] { new Attempt(new StoreKey("starbucks", "遠店"), "") },
+            AttemptPlanner.ForStore(O, O.Named("遠店")!, Bssids, Learned(), "typed"));
+    }
+
+    [Fact]
+    public void NearestOpenStore_Within300m()
+    {
+        Assert.Equal("近店", AttemptPlanner.NearestOpenStore(O, OpenCatalog, Here)?.StoreName);
+        Assert.Null(AttemptPlanner.NearestOpenStore(O, OpenCatalog, new GeoPoint(25.0378, 121.5170)));
+    }
+
     [Fact]
     public void Store_ExplicitPasswordOnly()
     {

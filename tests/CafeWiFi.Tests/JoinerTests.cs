@@ -420,6 +420,71 @@ public class JoinerTests : IDisposable
         Assert.Equal(new Status.Connected(null, "LouisaCoffee"), Last);
     }
 
+    // MARK: open networks
+
+    private static readonly BrandCatalog OpenCatalog = BrandCatalog.Load(new[]
+    {
+        System.Text.Json.JsonSerializer.Serialize(new Brand("starbucks", "星巴克", new[] { "Starbucks WiFi" }, new[]
+        {
+            S("站前門市", 25.0479),     // ~10 m from Here
+            S("北門門市", 25.0560),     // ~900 m
+        }, "open"), BrandCatalog.Json),
+    }, Array.Empty<string>());
+
+    private Joiner MakeOpen()
+    {
+        wifi.Nearby.AddRange(new[] { new Bss("Starbucks WiFi", Strong, -50), new Bss("Starbucks WiFi", Medium, -70) });
+        wifi.CorrectPasswords.Add("");
+        var j = new Joiner(wifi, locator, net, OpenCatalog, Learned, () => autoOn, () => now);
+        j.StatusChanged += (s, n) => reports.Add((s, n));
+        return j;
+    }
+
+    [Fact]
+    public async Task Open_Auto_JoinsWithoutPassword_AndLearnsNearbyStore()
+    {
+        var j = MakeOpen();
+        await j.AutoConnectAsync();
+        Assert.Equal(new[] { (Strong, "") }, wifi.Joins);
+        Assert.Equal(new Learned("starbucks/站前門市", ""), Learned.Lookup(Strong));
+        Assert.Equal(new Status.Connected("站前門市", "Starbucks WiFi"), Last);
+    }
+
+    [Fact]
+    public async Task Open_Auto_NoStoreNearby_StaysAwayQuietly()
+    {
+        locator.Location = new GeoPoint(25.0700, 121.5170); // ~2.5 km from any store
+        var j = MakeOpen();
+        await j.AutoConnectAsync();
+        Assert.Empty(wifi.Joins);
+        Assert.Empty(reports);
+    }
+
+    [Fact]
+    public async Task Open_LinkedByWindows_LearnsStoreFromLocation()
+    {
+        var j = MakeOpen();
+        wifi.Link = new WifiLink("Starbucks WiFi", Strong);
+        await j.AutoConnectAsync();
+        Assert.Empty(wifi.Joins);
+        Assert.Equal("starbucks/站前門市", Learned.Lookup(Strong)?.Store);
+        Assert.Equal(new StoreKey("starbucks", "站前門市"), j.CurrentStoreKey());
+    }
+
+    [Fact]
+    public async Task Open_Manual_JoinsThatStore_AndLearnsWhenAlreadyLinked()
+    {
+        var j = MakeOpen();
+        var brand = OpenCatalog.Brand("starbucks")!;
+        await j.ConnectAsync(brand, brand.Named("北門門市")!, "ignored");
+        Assert.Equal(new[] { (Strong, "") }, wifi.Joins);
+        Assert.Equal(new Status.Connected("北門門市", "Starbucks WiFi"), Last);
+
+        await j.ConnectAsync(brand, brand.Named("站前門市")!);   // already linked: just relabel
+        Assert.Single(wifi.Joins);
+        Assert.Equal("starbucks/站前門市", Learned.Lookup(Strong)?.Store);
+    }
+
     [Fact]
     public void CurrentStatus_ReflectsLink()
     {
