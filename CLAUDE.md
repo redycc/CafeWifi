@@ -3,7 +3,7 @@
 Windows 系統匣 App：走進咖啡廳就自動連上 Wi-Fi。同一品牌每家店的 SSID 都一樣（例如 `LouisaCoffee`），但每家店的密碼不同（通常是門市電話）。App 會認出你在哪家店，換上那家店的密碼。目前內建路易莎（512 家門市），設計上可以擴充到其他品牌。
 
 - GitHub：https://github.com/redycc/CafeWifi（`origin`，分支 `main`）
-- 使用者文件：`README.md`（繁體中文）
+- 使用者文件：`README.md`（繁體中文，目前移除了，使用者之後會自己重寫；舊版可用 `git show 912d9e8:README.md` 取回）
 - Wi-Fi API 實測結果：`docs/spike-wifi.md`
 
 ## 溝通與文字
