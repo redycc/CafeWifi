@@ -48,8 +48,17 @@ switch (cmd)
         Console.WriteLine($"join {(ok ? "ok" : "failed")} in {sw.ElapsedMilliseconds} ms");
         break;
     }
+    case "service":
+    {
+        var wifi = new CafeWiFi.Platform.NativeWifiService();
+        Console.WriteLine($"HasInterface: {wifi.HasInterface}");
+        Console.WriteLine($"CurrentLink: {wifi.CurrentLink()}");
+        foreach (var b in (await wifi.ScanAsync()).OrderByDescending(b => b.Rssi)) Console.WriteLine($"  {b}");
+        Console.WriteLine($"online: {await new CafeWiFi.Platform.Connectivity().IsOnlineAsync()}");
+        break;
+    }
     default:
-        Console.WriteLine("usage: scan | profile | join <ssid> <password>");
+        Console.WriteLine("usage: scan | profile | service | join <ssid> <password>");
         return 2;
 }
 return 0;

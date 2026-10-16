@@ -1,0 +1,37 @@
+using CafeWiFi.Core;
+
+namespace CafeWiFi.Platform;
+
+/// <summary>A router in range. Bssid is normalized; Rssi is in dBm.</summary>
+public sealed record Bss(string Ssid, string Bssid, int Rssi);
+
+/// <summary>The network Wi-Fi is associated with. Bssid may be null if Windows won't say.</summary>
+public sealed record WifiLink(string? Ssid, string? Bssid);
+
+public interface IWifi
+{
+    /// <summary>A wireless interface exists and its radio is on.</summary>
+    bool HasInterface { get; }
+
+    /// <summary>Null when Wi-Fi isn't associated with anything.</summary>
+    WifiLink? CurrentLink();
+
+    /// <summary>Asks for a fresh scan (waiting up to 4 s), then returns every router in range.</summary>
+    Task<IReadOnlyList<Bss>> ScanAsync(CancellationToken ct = default);
+
+    /// <summary>Writes a profile for target.Ssid with this password and joins that exact router.</summary>
+    Task<bool> TryJoinAsync(Bss target, string password, CancellationToken ct = default);
+}
+
+public interface IConnectivity
+{
+    Task<bool> IsOnlineAsync();
+}
+
+public interface ILocator
+{
+    /// <summary>The last known location, however old: inside a cafe there's often no fresh fix.</summary>
+    GeoPoint? Location { get; }
+    bool Authorized { get; }
+    event Action? Changed;
+}
