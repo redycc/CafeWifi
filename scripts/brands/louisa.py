@@ -1,14 +1,9 @@
 #!/usr/bin/env python3
 """Scrape every Louisa Coffee store from louisacoffee.co and write data/brands/louisa.json.
 
-Ported from madeyexz/louisa-wifi (MIT). Each store gets a list of Wi-Fi password
-candidates derived from its phone number; the app tries them in order, so the
-most likely comes first.
-
-    python scripts/brands/louisa.py                         # scrape the website
-    python scripts/brands/louisa.py --from-legacy stores.json  # convert louisa-wifi's data/stores.json
+Each store gets a list of Wi-Fi password candidates derived from its phone number;
+the app tries them in order, so the most likely comes first.
 """
-import argparse
 import html
 import json
 import re
@@ -104,11 +99,7 @@ def build(raw):
 
 
 def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--from-legacy", type=Path, help="louisa-wifi's data/stores.json instead of scraping")
-    args = ap.parse_args()
-    raw = json.loads(args.from_legacy.read_text(encoding="utf-8")) if args.from_legacy else scrape()
-    brand = build(raw)
+    brand = build(scrape())
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text(json.dumps(brand, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
     missing = sum(1 for s in brand["stores"] if not s["lat"])

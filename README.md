@@ -3,8 +3,6 @@
 走進路易莎（以及之後支援的其他咖啡廳），Windows 自動連上 Wi-Fi。
 不用問密碼，也不用一直「忘記這個網路」。
 
-這是 [louisa-wifi](https://github.com/madeyexz/louisa-wifi)（macOS）的 Windows 版，並改成可以擴充到多個咖啡廳品牌。
-
 ## 為什麼需要它？
 
 每一家路易莎的 Wi-Fi 都叫 `LouisaCoffee`，但每家的密碼都不一樣（是那家店的電話號碼）。Windows 一個網路名稱只會記住一組密碼，所以換一家店就連不上，得先「忘記」再重新輸入密碼。
@@ -143,7 +141,7 @@ CafeWiFi.exe --update                  檢查或安裝更新
 
 ### 路易莎的密碼規則
 
-路易莎的 Wi-Fi 密碼是門市的電話號碼，但寫法不統一，所以從電話產生 2 到 3 組候選密碼（規則沿用 louisa-wifi）：
+路易莎的 Wi-Fi 密碼是門市的電話號碼，但寫法不統一，所以從電話產生 2 到 3 組候選密碼：
 
 | 電話 | 依序嘗試 |
 |---|---|
@@ -168,6 +166,6 @@ dotnet run --project src/CafeWiFi
 
 連線與使用紀錄都存在你的電腦上：連過的路由器與密碼存在 `%APPDATA%\CafeWiFi\learned.json`，時間紀錄存在同一個資料夾的 `usage.json`。程式只會連到 `www.msftconnecttest.com`（確認網路是否可用，和 Windows 自己用的一樣）和 GitHub（檢查及下載更新）。
 
-## 致謝與授權
+## 授權
 
-設計、密碼規則和門市資料的抓取方式來自 Ian Hsiao 的 [louisa-wifi](https://github.com/madeyexz/louisa-wifi)。MIT 授權，見 [LICENSE](LICENSE)。
+MIT，見 [LICENSE](LICENSE)。
