@@ -129,6 +129,19 @@ public class BrandCatalogTests
     }
 
     [Fact]
+    public void Resolve_PrefersExactName_ElseSearch()
+    {
+        var c = BrandCatalog.Load(new[]
+        {
+            BrandJson("louisa", "LouisaCoffee", ("延平門市", "台北市", 25, 121.5), ("延平北門市", "台北市", 25, 121.5)),
+        }, Array.Empty<string>());
+        Assert.Equal("延平門市", Assert.Single(c.Resolve("延平門市")).Store.Name);
+        Assert.Equal(2, c.Resolve("延平").Count);
+        Assert.Equal("延平北門市", Assert.Single(c.Resolve("延平北")).Store.Name);
+        Assert.Empty(c.Resolve("不存在"));
+    }
+
+    [Fact]
     public void StoreKey_RoundTrips_EvenWithSlashInName()
     {
         var k = new StoreKey("louisa", "A/B門市");

@@ -28,9 +28,10 @@ public sealed class Settings
         return s;
     }
 
+    /// <summary>Safe from any thread: the UI and the location callback both save.</summary>
     public void Save()
     {
         try { JsonFile.Save(path, this); }
-        catch (IOException ex) { Log.Write($"cannot save settings: {ex.Message}"); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { Log.Write($"cannot save settings: {ex.Message}"); }
     }
 }

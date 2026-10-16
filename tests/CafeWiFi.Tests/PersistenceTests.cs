@@ -34,7 +34,16 @@ public class PersistenceTests : IDisposable
         var back = JsonFile.Load<Sample>(path);
         Assert.Equal(4, back.N);
         Assert.Equal("延平", Assert.Single(back.Items));
-        Assert.False(System.IO.File.Exists(path + ".tmp"));
+        Assert.Empty(Directory.GetFiles(dir.Path, "*.tmp"));
+    }
+
+    [Fact]
+    public void JsonFile_ConcurrentSaves_AllSucceed()
+    {
+        var path = dir.File("x.json");
+        Parallel.For(0, 50, i => JsonFile.Save(path, new Sample { N = i }));
+        Assert.InRange(JsonFile.Load<Sample>(path).N, 0, 49);
+        Assert.Empty(Directory.GetFiles(dir.Path, "*.tmp"));
     }
 
     [Fact]

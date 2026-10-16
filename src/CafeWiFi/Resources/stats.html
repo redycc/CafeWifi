@@ -1,2 +1,247 @@
 <!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
 <title>連線統計</title>
+<style>
+  :root {
+    --bg: #ffffff; --fg: #1f1f1f; --muted: #6b6b6b; --tile: #f4f3f0; --hover: #ecebe8;
+    --accent: #2a78d6; --accent-soft: rgba(42, 120, 214, .14); --on-accent: #ffffff;
+    --l0: #f0efec; --l1: #b7d3f6; --l2: #6da7ec; --l3: #2a78d6; --l4: #104281; --bar: #2a78d6;
+    --sel: #1f1f1f;
+    color-scheme: light dark;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #202020; --fg: #f0f0f0; --muted: #a3a3a3; --tile: #2c2c2b; --hover: #333332;
+      --accent: #3987e5; --accent-soft: rgba(57, 135, 229, .22);
+      --l0: #383835; --l1: #184f95; --l2: #256abf; --l3: #3987e5; --l4: #86b6ef; --bar: #3987e5;
+      --sel: #f0f0f0;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--fg); }
+  body {
+    font: 14px/1.45 "Segoe UI", "Microsoft JhengHei UI", "Microsoft JhengHei", sans-serif;
+    padding: 24px; display: flex; gap: 20px; align-items: flex-start; user-select: none;
+  }
+  main { width: var(--grid-width, 760px); display: flex; flex-direction: column; gap: 22px; }
+  h1 { font-size: 19px; font-weight: 600; margin: 0; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  button { font: inherit; color: inherit; cursor: pointer; }
+  .small { font-size: 12px; padding: 2px 10px; border-radius: 6px; border: 1px solid var(--muted); background: transparent; }
+  .tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+  .tile { background: var(--tile); border-radius: 8px; padding: 12px; }
+  .tile .label { font-size: 12px; color: var(--muted); }
+  .tile .value { font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .grid-wrap { display: flex; flex-direction: column; gap: 6px; }
+  .months { position: relative; height: 16px; font-size: 11px; color: var(--muted); margin-left: 26px; }
+  .months span { position: absolute; top: 0; white-space: nowrap; }
+  .grid-row { display: flex; gap: 6px; }
+  .weekdays { display: grid; grid-template-rows: repeat(7, 11px); gap: 3px; font-size: 10px; color: var(--muted); width: 20px; }
+  .weekdays span { line-height: 11px; }
+  .grid { display: grid; grid-auto-flow: column; grid-template-rows: repeat(7, 11px); grid-auto-columns: 11px; gap: 3px; outline: none; }
+  .cell { width: 11px; height: 11px; border-radius: 2px; background: var(--l0); cursor: pointer; }
+  .cell.l1 { background: var(--l1); } .cell.l2 { background: var(--l2); }
+  .cell.l3 { background: var(--l3); } .cell.l4 { background: var(--l4); }
+  .cell.out { visibility: hidden; }
+  .cell.future { opacity: .35; cursor: default; }
+  .cell.selected { outline: 2px solid var(--sel); outline-offset: 1px; }
+  .below { display: flex; justify-content: space-between; align-items: center; gap: 12px; font-size: 13px; min-height: 20px; }
+  .caption { color: var(--muted); }
+  .caption b { color: var(--fg); font-weight: 600; }
+  .legend { display: flex; align-items: center; gap: 3px; font-size: 11px; color: var(--muted); white-space: nowrap; }
+  .legend .cell { cursor: default; }
+  .segmented { display: inline-flex; background: var(--tile); border-radius: 8px; padding: 2px; align-self: flex-start; }
+  .segmented button { border: 0; background: transparent; padding: 4px 16px; border-radius: 6px; }
+  .segmented button.on { background: var(--bg); box-shadow: 0 1px 2px rgba(0,0,0,.18); font-weight: 600; }
+  .bars { max-height: 182px; overflow-y: auto; margin: 0 -8px; padding: 0 8px; }
+  .bar-row { display: flex; align-items: center; gap: 10px; padding: 5px 8px; margin: 0 -8px; border-radius: 6px; cursor: pointer; }
+  .bar-row:hover { background: var(--hover); }
+  .bar-row.selected { background: var(--accent-soft); }
+  .bar-row .name { width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .bar-row .track { flex: 1; height: 14px; }
+  .bar-row .fill { height: 14px; border-radius: 3px; background: var(--bar); min-width: 2px; }
+  .bar-row .time { width: 110px; text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .empty { color: var(--muted); }
+  .month-cols { display: flex; align-items: flex-end; height: 150px; }
+  .month-col { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+  .month-col .peak { font-size: 11px; color: var(--muted); white-space: nowrap; min-height: 15px; }
+  .month-col .col { width: 28px; border-radius: 3px; background: var(--bar); }
+  .month-col .col.zero { background: var(--l0); }
+  .month-col .m { font-size: 12px; color: var(--muted); }
+  nav { display: flex; flex-direction: column; gap: 4px; padding-top: 4px; }
+  nav button { border: 0; background: transparent; text-align: left; width: 92px; padding: 6px 10px; border-radius: 6px; }
+  nav button:hover { background: var(--hover); }
+  nav button.on { background: var(--accent); color: var(--on-accent); }
+</style>
+</head>
+<body>
+<main>
+  <h1><span id="heading">連線統計</span><button id="all-stores" class="small" hidden>顯示全部門市</button></h1>
+  <div class="tiles" id="tiles"></div>
+  <div class="grid-wrap">
+    <div class="months" id="months"></div>
+    <div class="grid-row">
+      <div class="weekdays"><span>一</span><span></span><span>三</span><span></span><span>五</span><span></span><span>日</span></div>
+      <div class="grid" id="grid" tabindex="0" aria-label="每日連線時間"></div>
+    </div>
+    <div class="below">
+      <span class="caption" id="caption"></span>
+      <span class="legend">少 <span class="cell"></span><span class="cell l1"></span><span class="cell l2"></span><span class="cell l3"></span><span class="cell l4"></span> 多</span>
+    </div>
+  </div>
+  <div class="segmented" id="tabs">
+    <button data-tab="stores" class="on">門市</button><button data-tab="months">月份</button><button data-tab="years">年份</button>
+  </div>
+  <section id="breakdown"></section>
+</main>
+<nav id="ranges"></nav>
+
+<script>
+"use strict";
+const state = { range: "past", store: null, day: null, tab: "stores" };
+let view = null;
+
+const $ = id => document.getElementById(id);
+const el = (tag, cls, text) => {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text !== undefined) e.textContent = text;
+  return e;
+};
+const duration = s => {
+  const m = Math.floor(s / 60);
+  return m >= 60 ? `${Math.floor(m / 60)} 小時 ${m % 60} 分` : `${m} 分`;
+};
+const monthDay = iso => { const [, m, d] = iso.split("-").map(Number); return `${m}月${d}日`; };
+
+function request() {
+  window.chrome.webview.postMessage({ range: state.range, store: state.store, day: state.day });
+}
+
+window.chrome.webview.addEventListener("message", e => { view = e.data; render(); });
+
+function render() {
+  const v = view;
+  $("heading").textContent = v.heading;
+  $("all-stores").hidden = !v.store;
+
+  const tiles = $("tiles");
+  tiles.replaceChildren(...v.tiles.map(t => {
+    const d = el("div", "tile");
+    d.append(el("div", "label", t.label), el("div", "value", t.value));
+    return d;
+  }));
+
+  document.documentElement.style.setProperty("--grid-width", `${Math.max(640, 26 + v.weeks.length * 14)}px`);
+  $("months").replaceChildren(...v.monthLabels.map(l => {
+    const s = el("span", "", l.label);
+    s.style.left = `${l.week * 14}px`;
+    return s;
+  }));
+
+  const grid = $("grid");
+  const cells = [];
+  for (const week of v.weeks) {
+    for (const c of week) {
+      const d = el("div", "cell");
+      if (!c.inRange) d.classList.add("out");
+      else if (c.future) d.classList.add("future");
+      else {
+        if (c.level) d.classList.add("l" + c.level);
+        d.title = `${monthDay(c.date)}：${c.seconds > 0 ? duration(c.seconds) : "無紀錄"}`;
+        d.addEventListener("click", () => selectDay(c.date));
+      }
+      if (c.date === state.day) d.classList.add("selected");
+      cells.push(d);
+    }
+  }
+  grid.replaceChildren(...cells);
+
+  const caption = $("caption");
+  if (v.day) {
+    caption.replaceChildren(el("b", "", v.day.title), document.createTextNode("　" + v.day.detail));
+  } else {
+    caption.textContent = "點選格子，查看當天的門市與連線時間";
+  }
+
+  for (const b of $("tabs").children) b.classList.toggle("on", b.dataset.tab === state.tab);
+  renderBreakdown();
+
+  $("ranges").replaceChildren(...v.ranges.map(r => {
+    const b = el("button", r.id === v.range ? "on" : "", r.title);
+    b.addEventListener("click", () => { state.range = r.id; state.day = null; request(); });
+    return b;
+  }));
+}
+
+function bars(rows, selected, empty, onClick) {
+  if (!rows.length) return el("div", "empty", empty);
+  const max = rows[0].seconds;
+  const wrap = el("div", "bars");
+  for (const r of rows) {
+    const row = el("div", "bar-row" + (r.id === selected ? " selected" : ""));
+    const track = el("div", "track"), fill = el("div", "fill");
+    fill.style.width = `${(100 * r.seconds / max).toFixed(2)}%`;
+    track.append(fill);
+    const name = el("span", "name", r.label);
+    name.title = r.label;
+    row.append(name, track, el("span", "time", r.text));
+    row.addEventListener("click", () => onClick(r.id));
+    wrap.append(row);
+  }
+  return wrap;
+}
+
+function renderBreakdown() {
+  const v = view, box = $("breakdown");
+  if (state.tab === "stores") {
+    box.replaceChildren(bars(v.stores, v.store, "這段期間沒有紀錄。連上咖啡廳 Wi-Fi 後會自動計時。", id => {
+      state.store = state.store === id ? null : id;
+      request();
+    }));
+  } else if (state.tab === "months") {
+    const peak = Math.max(0, ...v.months.map(m => m.seconds));
+    const cols = el("div", "month-cols");
+    for (const m of v.months) {
+      const c = el("div", "month-col");
+      c.title = `${m.label}：${m.text}`;
+      const bar = el("div", "col" + (m.seconds > 0 ? "" : " zero"));
+      bar.style.height = `${peak > 0 ? Math.max(2, 110 * m.seconds / peak) : 2}px`;
+      c.append(el("div", "peak", m.seconds === peak && peak > 0 ? m.text : ""), bar, el("div", "m", m.label));
+      cols.append(c);
+    }
+    box.replaceChildren(cols);
+  } else {
+    const rows = v.years.map(y => ({ id: String(y.year), label: `${y.year} 年`, seconds: y.seconds, text: y.text }));
+    box.replaceChildren(bars(rows, v.range, "還沒有紀錄。", id => { state.range = id; state.day = null; request(); }));
+  }
+}
+
+function selectDay(date) {
+  state.day = date;
+  request();
+}
+
+$("all-stores").addEventListener("click", () => { state.store = null; request(); });
+for (const b of $("tabs").children) b.addEventListener("click", () => { state.tab = b.dataset.tab; render(); });
+
+// Arrow keys move the selected day: up/down a day, left/right a week (the grid's columns are weeks).
+document.addEventListener("keydown", e => {
+  const step = { ArrowUp: -1, ArrowDown: 1, ArrowLeft: -7, ArrowRight: 7 }[e.key];
+  if (!step || !view) return;
+  e.preventDefault();
+  const days = view.weeks.flat().filter(c => c.inRange && !c.future).map(c => c.date);
+  if (!days.length) return;
+  let i = state.day ? days.indexOf(state.day) : -1;
+  if (i < 0) { selectDay(days[days.length - 1]); return; }
+  const date = new Date(state.day + "T00:00:00Z");
+  date.setUTCDate(date.getUTCDate() + step);
+  const next = date.toISOString().slice(0, 10);
+  if (days.includes(next)) selectDay(next);
+});
+
+request();
+</script>
+</body>
+</html>

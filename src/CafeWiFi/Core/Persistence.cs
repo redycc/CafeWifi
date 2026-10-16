@@ -26,12 +26,21 @@ public static class JsonFile
         return new T();
     }
 
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, object> Gates =
+        new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>Safe to call from several threads: writes to one path are serialized (Windows refuses concurrent replaces).</summary>
     public static void Save<T>(string path, T value)
     {
-        Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
-        var tmp = path + ".tmp";
-        File.WriteAllText(tmp, JsonSerializer.Serialize(value, Options));
-        File.Move(tmp, path, overwrite: true);
+        var full = Path.GetFullPath(path);
+        var json = JsonSerializer.Serialize(value, Options);
+        lock (Gates.GetOrAdd(full, _ => new object()))
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(full)!);
+            var tmp = full + ".tmp";
+            File.WriteAllText(tmp, json);
+            File.Move(tmp, full, overwrite: true);
+        }
     }
 }
 
@@ -62,7 +71,7 @@ public sealed class LearnedStore
         {
             foreach (var b in bssids) map[Bssid.Normalize(b)] = new Learned(store.ToString(), password);
             try { JsonFile.Save(path, map); }
-            catch (IOException ex) { Log.Write($"cannot save learned: {ex.Message}"); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { Log.Write($"cannot save learned: {ex.Message}"); }
         }
     }
 
@@ -104,7 +113,7 @@ public sealed class UsageStore
             if (!usage.TryGetValue(key, out var stores)) usage[key] = stores = new();
             stores[store.ToString()] = stores.GetValueOrDefault(store.ToString()) + seconds;
             try { JsonFile.Save(path, usage); }
-            catch (IOException ex) { Log.Write($"cannot save usage: {ex.Message}"); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { Log.Write($"cannot save usage: {ex.Message}"); }
         }
         Changed?.Invoke();
     }

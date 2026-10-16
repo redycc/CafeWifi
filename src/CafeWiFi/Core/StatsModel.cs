@@ -112,7 +112,7 @@ public static class StatsModel
         }
         // Drop a label crowded out by the next one (a range starting late in a month).
         for (int i = monthLabels.Count - 2; i >= 0; i--)
-            if (monthLabels[i + 1].Week - monthLabels[i].Week < 2) monthLabels.RemoveAt(i);
+            if (monthLabels[i + 1].Week - monthLabels[i].Week < 3) monthLabels.RemoveAt(i);
 
         var lastMonth = new DateOnly(period.End.Year, period.End.Month, 1);
         var months = Enumerable.Range(0, 12).Reverse().Select(back =>

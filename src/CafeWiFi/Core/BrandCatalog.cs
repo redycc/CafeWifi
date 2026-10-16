@@ -95,6 +95,15 @@ public sealed class BrandCatalog
             .ToList();
     }
 
+    /// <summary>For "--connect &lt;query&gt;": an exact store name wins, otherwise every search hit.</summary>
+    public IReadOnlyList<(Brand Brand, Store Store)> Resolve(string query, string? brandId = null)
+    {
+        var exact = Brands.Where(b => brandId is null || b.Id == brandId)
+            .SelectMany(b => b.Stores.Where(s => s.Name == query.Trim()).Select(s => (Brand: b, Store: s)))
+            .ToList();
+        return exact.Count > 0 ? exact : Search(query, brandId);
+    }
+
     /// <summary>Stores whose name or address contains every whitespace-separated token.</summary>
     public IReadOnlyList<(Brand Brand, Store Store)> Search(string query, string? brandId = null)
     {
