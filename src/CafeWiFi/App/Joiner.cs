@@ -1,0 +1,255 @@
+using CafeWiFi.Core;
+using CafeWiFi.Platform;
+
+namespace CafeWiFi.App;
+
+/// <summary>
+/// Finds the right password for the cafe you're at and joins it. Wi-Fi work runs one job
+/// at a time because scanning and joining block; a user action supersedes whatever is
+/// running (bumps the epoch and cancels the join in progress).
+/// </summary>
+public sealed class Joiner
+{
+    private static readonly TimeSpan Snooze = TimeSpan.FromMinutes(10);
+    private static readonly TimeSpan Quiet = TimeSpan.FromSeconds(15);
+    private const int RememberRssi = -75;
+
+    private readonly IWifi wifi;
+    private readonly ILocator locator;
+    private readonly IConnectivity net;
+    private readonly BrandCatalog catalog;
+    private readonly LearnedStore learned;
+    private readonly Func<bool> autoEnabled;
+    private readonly Func<DateTimeOffset> clock;
+
+    private readonly SemaphoreSlim queue = new(1, 1);
+    private readonly Dictionary<string, DateTimeOffset> snoozed = new(); // BSSIDs we recently failed on; queue only
+    private DateTimeOffset quietUntil = DateTimeOffset.MinValue;      // our own joins fire link events; queue only
+    private int autoQueued;
+    private int epoch;
+    private CancellationTokenSource joinCts = new();
+
+    /// <summary>Raised on a worker thread. The flag says whether to show a notification.</summary>
+    public event Action<Status, bool>? StatusChanged;
+
+    public Joiner(IWifi wifi, ILocator locator, IConnectivity net, BrandCatalog catalog, LearnedStore learned,
+        Func<bool> autoEnabled, Func<DateTimeOffset> clock)
+    {
+        (this.wifi, this.locator, this.net, this.catalog, this.learned, this.autoEnabled, this.clock) =
+            (wifi, locator, net, catalog, learned, autoEnabled, clock);
+    }
+
+    // MARK: state
+
+    public Status CurrentStatus()
+    {
+        if (!wifi.HasInterface || wifi.CurrentLink() is not { } link) return new Status.Idle();
+        return catalog.BrandForSsid(link.Ssid) is null ? new Status.Idle() : new Status.Connected(CurrentStoreLabel(), link.Ssid);
+    }
+
+    /// <summary>The cafe store we're on, or the brand's 未知門市 if we haven't learned this router; null off cafe Wi-Fi.</summary>
+    public StoreKey? CurrentStoreKey()
+    {
+        if (wifi.CurrentLink() is not { } link || catalog.BrandForSsid(link.Ssid) is not { } brand) return null;
+        if (link.Bssid is not null && learned.Lookup(link.Bssid) is { } l)
+        {
+            var key = StoreKey.Parse(l.Store);
+            if (key.BrandId == brand.Id) return key;
+        }
+        return new StoreKey(brand.Id, StoreKey.Unknown);
+    }
+
+    public string? CurrentStoreLabel() => CurrentStoreKey() is { IsUnknown: false } k ? catalog.Label(k) : null;
+
+    public IReadOnlySet<string> KnownStores() => learned.KnownStores();
+
+    // MARK: entry points
+
+    /// <summary>Wi-Fi changes, location changes and the timer call this. Bursts collapse into one run.</summary>
+    public async Task AutoConnectAsync()
+    {
+        if (!autoEnabled() || Interlocked.Exchange(ref autoQueued, 1) == 1) return;
+        int e = Volatile.Read(ref epoch);
+        await queue.WaitAsync();
+        try { await RunAuto(manual: false, e); }
+        finally
+        {
+            queue.Release();
+            Volatile.Write(ref autoQueued, 0);
+        }
+    }
+
+    /// <summary>The user picked a store, optionally with the exact password to use.</summary>
+    public async Task ConnectAsync(Brand brand, Store store, string? password = null)
+    {
+        int e = Interrupt();
+        await queue.WaitAsync();
+        try
+        {
+            if (!Current(e)) return;
+            await RunStore(brand, store, password, e);
+        }
+        finally { queue.Release(); }
+    }
+
+    /// <summary>Connect to the nearest store, ignoring the auto-connect setting and snoozes.</summary>
+    public async Task ConnectNearestAsync()
+    {
+        int e = Interrupt();
+        await queue.WaitAsync();
+        try
+        {
+            if (!Current(e)) return;
+            snoozed.Clear();
+            await RunAuto(manual: true, e);
+        }
+        finally { queue.Release(); }
+    }
+
+    // MARK: flows
+
+    private async Task RunAuto(bool manual, int e)
+    {
+        if (!wifi.HasInterface)
+        {
+            if (manual) Report(new Status.Failed("請先開啟 Wi-Fi"), notify: true);
+            return;
+        }
+        if (!manual && clock() < quietUntil) return;
+        if (wifi.CurrentLink() is not null)
+        {
+            if (manual) Report(CurrentStatus(), notify: true);
+            return;
+        }
+        if (!manual && await net.IsOnlineAsync()) return; // e.g. on Ethernet; don't add Wi-Fi
+
+        var bss = await wifi.ScanAsync();
+        var best = bss.Where(b => catalog.BrandForSsid(b.Ssid) is not null).MaxBy(b => b.Rssi);
+        if (best is null)
+        {
+            if (manual) Report(new Status.Idle(), notify: true);
+            return;
+        }
+        var brand = catalog.BrandForSsid(best.Ssid)!;
+        var nets = bss.Where(b => b.Ssid == best.Ssid).OrderByDescending(b => b.Rssi).ToList();
+        var key = nets[0].Bssid;
+        if (snoozed.TryGetValue(key, out var until) && until > clock()) return;
+
+        var tries = AttemptPlanner.ForAuto(brand, nets.Select(n => n.Bssid).ToList(), learned, catalog, locator.Location);
+        if (tries.Count == 0)
+        {
+            snoozed[key] = clock() + Snooze;
+            Report(new Status.Failed(locator.Authorized ? "無法辨識門市，請從選單選擇" : "請允許定位，以自動尋找附近門市"), notify: true);
+            return;
+        }
+
+        Report(new Status.Connecting(catalog.Label(tries[0].Store)));
+        foreach (var t in tries)
+        {
+            if (!Current(e)) return;
+            if (await Join(nets, t.Password))
+            {
+                Remember(nets, t.Store, t.Password);
+                Report(new Status.Connected(catalog.Label(t.Store), nets[0].Ssid), notify: true);
+                return;
+            }
+        }
+        if (!Current(e)) return;
+        snoozed[key] = clock() + Snooze;
+        Report(new Status.Failed("自動連線失敗，請從選單選擇門市"), notify: true);
+    }
+
+    private async Task RunStore(Brand brand, Store store, string? password, int e)
+    {
+        var label = catalog.Label(new StoreKey(brand.Id, store.Name));
+        if (!wifi.HasInterface)
+        {
+            Report(new Status.Failed("請先開啟 Wi-Fi"), notify: true);
+            return;
+        }
+        // Trying passwords drops the current connection, so don't if it already works.
+        if (wifi.CurrentLink() is { } link)
+        {
+            if (brand.Ssids.Contains(link.Ssid ?? "", StringComparer.OrdinalIgnoreCase))
+            {
+                Report(CurrentStatus(), notify: true);
+                return;
+            }
+            if (await net.IsOnlineAsync())
+            {
+                Report(new Status.Failed("目前已可上網，保留現有連線"), notify: true);
+                return;
+            }
+        }
+
+        Report(new Status.Connecting(label));
+        var nets = (await wifi.ScanAsync())
+            .Where(b => brand.Ssids.Contains(b.Ssid, StringComparer.OrdinalIgnoreCase))
+            .OrderByDescending(b => b.Rssi).ToList();
+        if (nets.Count == 0)
+        {
+            Report(new Status.Failed($"附近找不到{brand.Name} Wi-Fi"), notify: true);
+            return;
+        }
+        // Several SSIDs per brand: stick to the strongest one's routers.
+        nets = nets.Where(n => n.Ssid == nets[0].Ssid).ToList();
+
+        foreach (var t in AttemptPlanner.ForStore(brand, store, nets.Select(n => n.Bssid).ToList(), learned, password))
+        {
+            if (!Current(e)) return;
+            if (await Join(nets, t.Password))
+            {
+                Remember(nets, t.Store, t.Password);
+                Report(new Status.Connected(label, nets[0].Ssid), notify: true);
+                return;
+            }
+        }
+        if (!Current(e)) return;
+        Report(new Status.Failed(password is not null ? $"密碼 {password} 無法連上{label}" : $"無法連上{label}，請確認門市與密碼"), notify: true);
+    }
+
+    // MARK: helpers
+
+    private async Task<bool> Join(IReadOnlyList<Bss> nets, string password)
+    {
+        CancellationToken ct;
+        lock (this) ct = joinCts.Token;
+        try
+        {
+            if (!await wifi.TryJoinAsync(nets[0], password, ct)) return false;
+            quietUntil = clock() + Quiet;
+            return true;
+        }
+        catch (OperationCanceledException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>Remember the strongest router plus every router heard well, so the store is recognized from any of them.</summary>
+    private void Remember(IReadOnlyList<Bss> nets, StoreKey store, string password) =>
+        learned.Remember(nets.Where((n, i) => i == 0 || n.Rssi > RememberRssi).Select(n => n.Bssid), store, password);
+
+    private int Interrupt()
+    {
+        lock (this)
+        {
+            // Bump first: Cancel() can run the interrupted loop's continuation inline,
+            // and that loop must already see it's been superseded.
+            int e = Interlocked.Increment(ref epoch);
+            var old = joinCts;
+            joinCts = new CancellationTokenSource();
+            old.Cancel();
+            old.Dispose();
+            return e;
+        }
+    }
+
+    private bool Current(int e) => Volatile.Read(ref epoch) == e;
+
+    private void Report(Status status, bool notify = false)
+    {
+        Log.Write(status.Text);
+        StatusChanged?.Invoke(status, notify);
+    }
+}

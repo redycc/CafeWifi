@@ -65,6 +65,10 @@ public sealed class BrandCatalog
 
     public Store? Find(StoreKey key) => Brand(key.BrandId)?.Named(key.StoreName);
 
+    /// <summary>A store's display name, prefixed with its brand once there's more than one brand.</summary>
+    public string Label(StoreKey key) =>
+        Brands.Count > 1 && Brand(key.BrandId) is { } b ? $"{b.Name} {key.StoreName}" : key.StoreName;
+
     /// <summary>Stores with coordinates, closest first.</summary>
     public IReadOnlyList<(Brand Brand, Store Store, double Meters)> Nearest(
         GeoPoint here, int limit, Func<Brand, Store, bool>? filter = null, string? brandId = null) =>
