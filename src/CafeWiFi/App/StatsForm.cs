@@ -10,21 +10,32 @@ using CafeWiFi.Core;
 namespace CafeWiFi.App;
 
 /// <summary>
-/// "連線統計": stats.html in WebView2. The page posts {range, store, day}; we answer with
-/// StatsModel's view as JSON, and push a fresh one whenever usage changes.
+/// "連線統計": stats.html in WebView2. The page posts {view, range, store, day}; we answer
+/// {kind, data} with StatsModel's or FootprintModel's view, and push a fresh one whenever
+/// usage or the user's own cafes change.
 /// </summary>
 public sealed class StatsForm : Form
 {
     private readonly UsageStore usage;
     private readonly BrandCatalog catalog;
+    private readonly PlaceStore places;
     private readonly WebView2 web = new() { Dock = DockStyle.Fill };
-    private (string? Range, string? Store, string? Day) request;
+    private (string? View, string? Range, string? Store, string? Day) request;
     private bool ready;
+    private string? pendingView;
 
-    public StatsForm(UsageStore usage, BrandCatalog catalog)
+    /// <summary>Switches the page to "stats" or "footprint", now or once it has loaded.</summary>
+    public void ShowView(string view)
+    {
+        if (ready && web.CoreWebView2 is not null) _ = web.CoreWebView2.ExecuteScriptAsync($"showView({JsonSerializer.Serialize(view)})");
+        else pendingView = view;
+    }
+
+    public StatsForm(UsageStore usage, BrandCatalog catalog, PlaceStore places)
     {
         this.usage = usage;
         this.catalog = catalog;
+        this.places = places;
         Text = "連線統計";
         Icon = Icon.ExtractAssociatedIcon(Environment.ProcessPath!);
         StartPosition = FormStartPosition.CenterScreen;
@@ -38,7 +49,12 @@ public sealed class StatsForm : Form
         HandleCreated += (_, _) => { if (dark) UseDarkTitleBar(Handle); };
         Load += async (_, _) => await InitAsync();
         usage.Changed += OnUsageChanged;
-        FormClosed += (_, _) => usage.Changed -= OnUsageChanged;
+        places.Changed += OnUsageChanged;
+        FormClosed += (_, _) =>
+        {
+            usage.Changed -= OnUsageChanged;
+            places.Changed -= OnUsageChanged;
+        };
     }
 
     private async Task InitAsync()
@@ -56,13 +72,27 @@ public sealed class StatsForm : Form
             {
                 using var doc = JsonDocument.Parse(e.WebMessageAsJson);
                 string? Get(string name) => doc.RootElement.TryGetProperty(name, out var p) && p.ValueKind == JsonValueKind.String ? p.GetString() : null;
-                request = (Get("range"), Get("store"), Get("day"));
+                request = (Get("view"), Get("range"), Get("store"), Get("day"));
+                bool first = !ready;
                 ready = true;
+                if (first && pendingView is { } v && v != request.View)
+                {
+                    pendingView = null;
+                    ShowView(v); // asks again with the right view
+                    return;
+                }
                 Send();
             };
-            using var stream = Assembly.GetExecutingAssembly().GetManifestResourceStream("stats.html")!;
-            using var reader = new StreamReader(stream);
-            web.NavigateToString(await reader.ReadToEndAsync());
+            // Served from a made-up https origin rather than NavigateToString: map tile servers
+            // refuse requests that carry no Referer. ".example" is reserved, and WebView2 answers
+            // it from the folder below without touching the network.
+            var dir = Path.Combine(Paths.LocalDir, "web");
+            Directory.CreateDirectory(dir);
+            await using (var stream = Assembly.GetExecutingAssembly().GetManifestResourceStream("stats.html")!)
+            await using (var file = File.Create(Path.Combine(dir, "stats.html")))
+                await stream.CopyToAsync(file);
+            web.CoreWebView2.SetVirtualHostNameToFolderMapping("cafewifi.example", dir, CoreWebView2HostResourceAccessKind.DenyCors);
+            web.CoreWebView2.Navigate("https://cafewifi.example/stats.html");
         }
         catch (Exception ex) when (ex is WebView2RuntimeNotFoundException or COMException or InvalidOperationException)
         {
@@ -74,10 +104,25 @@ public sealed class StatsForm : Form
     private void Send()
     {
         if (!ready || IsDisposed || web.CoreWebView2 is null) return;
-        var day = DateOnly.TryParseExact(request.Day, "yyyy-MM-dd", out var d) ? d : (DateOnly?)null;
-        var view = StatsModel.Build(usage.Snapshot(), StatsRange.Parse(request.Range), request.Store,
-            DateOnly.FromDateTime(DateTime.Now), key => catalog.Label(StoreKey.Parse(key)), day);
-        web.CoreWebView2.PostWebMessageAsJson(JsonSerializer.Serialize(view, JsonFile.Options));
+        var today = DateOnly.FromDateTime(DateTime.Now);
+        var range = StatsRange.Parse(request.Range);
+        object message = request.View == "footprint"
+            ? new { kind = "footprint", data = FootprintModel.Build(usage.Snapshot(), range, today, Locate) }
+            : new
+            {
+                kind = "stats",
+                data = StatsModel.Build(usage.Snapshot(), range, request.Store, today, key => catalog.Label(StoreKey.Parse(key)),
+                    DateOnly.TryParseExact(request.Day, "yyyy-MM-dd", out var d) ? d : null),
+            };
+        web.CoreWebView2.PostWebMessageAsJson(JsonSerializer.Serialize(message, JsonFile.Options));
+    }
+
+    /// <summary>Where a store or own cafe is on the map; null if we don't know.</summary>
+    private FootprintPlace? Locate(StoreKey key)
+    {
+        if (key.BrandId == Place.BrandId)
+            return places.Find(key.StoreName) is { } p ? new FootprintPlace(p.Name, p.Lat, p.Lng, p.City, "own") : null;
+        return catalog.Find(key) is { HasLocation: true } s ? new FootprintPlace(catalog.Label(key), s.Lat, s.Lng, s.City, "chain") : null;
     }
 
     private void OnUsageChanged()

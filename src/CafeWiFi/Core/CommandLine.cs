@@ -25,6 +25,7 @@ public static class CommandLine
                 case "--brand" when i + 1 < args.Length: brand = args[++i]; break;
                 case "--nearest": kind ??= "nearest"; break;
                 case "--stats": kind ??= "stats"; break;
+                case "--footprint": kind ??= "footprint"; break;
                 case "--update": kind ??= "update"; break;
                 case "--startup": kind ??= "startup"; break;
                 case "--capture-portal": kind ??= "capture-portal"; break;

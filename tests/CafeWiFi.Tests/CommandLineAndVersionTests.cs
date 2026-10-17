@@ -14,6 +14,7 @@ public class CommandLineAndVersionTests
     [InlineData(new[] { "--connect" }, "show", null, null)]
     [InlineData(new[] { "--nearest" }, "nearest", null, null)]
     [InlineData(new[] { "--stats" }, "stats", null, null)]
+    [InlineData(new[] { "--footprint" }, "footprint", null, null)]
     [InlineData(new[] { "--update" }, "update", null, null)]
     [InlineData(new[] { "--bogus" }, "show", null, null)]
     [InlineData(new[] { "--startup" }, "startup", null, null)]

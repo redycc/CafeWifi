@@ -19,15 +19,16 @@ public sealed class TrayController : IDisposable
     private readonly Updater updater;
     private readonly OwnCafes own;
     private readonly Action showStats;
+    private readonly Action showFootprint;
     private readonly Action exit;
     private readonly System.Windows.Forms.Timer leftClick = new() { Interval = SystemInformation.DoubleClickTime };
     private Status status = new Status.Idle();
 
     public TrayController(Joiner joiner, BrandCatalog catalog, ILocator locator, Settings settings, Updater updater,
-        OwnCafes own, Action showStats, Action exit)
+        OwnCafes own, Action showStats, Action showFootprint, Action exit)
     {
-        (this.joiner, this.catalog, this.locator, this.settings, this.updater, this.own, this.showStats, this.exit) =
-            (joiner, catalog, locator, settings, updater, own, showStats, exit);
+        (this.joiner, this.catalog, this.locator, this.settings, this.updater, this.own, this.showStats, this.showFootprint, this.exit) =
+            (joiner, catalog, locator, settings, updater, own, showStats, showFootprint, exit);
         menu.Opening += (_, _) => Rebuild();
         icon.ContextMenuStrip = menu;
         // Left click opens the same menu, like the Mac menu bar; double click opens stats.
@@ -126,6 +127,7 @@ public sealed class TrayController : IDisposable
         items.Add(new ToolStripSeparator());
 
         items.Add(Action("連線統計…", showStats));
+        items.Add(Action("足跡地圖…", showFootprint));
         items.Add(new ToolStripSeparator());
 
         if (!locator.Authorized) items.Add(Action("開啟定位權限…", OpenLocationSettings));

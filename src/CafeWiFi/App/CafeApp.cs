@@ -41,7 +41,7 @@ public sealed class CafeApp : ApplicationContext
             () => DateTimeOffset.Now, (text, dir) => Notifier.Show(text, "open:" + dir));
         tracker = new Tracker(joiner.CurrentStoreKey, usage);
         updater = new Updater(settings, text => Notifier.Show(text), () => ui.Post(_ => Quit(), null));
-        tray = new TrayController(joiner, catalog, locator, settings, updater, own, ShowStats, Quit);
+        tray = new TrayController(joiner, catalog, locator, settings, updater, own, ShowStats, () => ShowStats("footprint"), Quit);
         ui = SynchronizationContext.Current ?? new WindowsFormsSynchronizationContext();
 
         joiner.StatusChanged += (status, notify) =>
@@ -147,6 +147,9 @@ public sealed class CafeApp : ApplicationContext
             case "stats":
                 ShowStats();
                 break;
+            case "footprint":
+                ShowStats("footprint");
+                break;
             case "capture-portal":
                 TrayController.Run(CapturePortalNowAsync);
                 break;
@@ -156,9 +159,12 @@ public sealed class CafeApp : ApplicationContext
         }
     }
 
-    private void ShowStats()
+    private void ShowStats() => ShowStats("stats");
+
+    private void ShowStats(string view)
     {
-        if (stats is null || stats.IsDisposed) stats = new StatsForm(usage, catalog);
+        if (stats is null || stats.IsDisposed) stats = new StatsForm(usage, catalog, places);
+        stats.ShowView(view);
         stats.Show();
         if (stats.WindowState == FormWindowState.Minimized) stats.WindowState = FormWindowState.Normal;
         stats.Activate();
