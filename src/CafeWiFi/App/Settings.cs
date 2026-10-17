@@ -9,6 +9,8 @@ public sealed class Settings
     public bool AutoConnect { get; set; } = true;
     public bool OnlyKnown { get; set; }
     public bool HideTrayIcon { get; set; }
+    /// <summary>Look up new Wi-Fi networks on OpenStreetMap and remember independent cafes.</summary>
+    public bool AutoDiscover { get; set; } = true;
     public double? LastLat { get; set; }
     public double? LastLng { get; set; }
     public DateTimeOffset? LastFixTime { get; set; }

@@ -11,6 +11,7 @@ public static class Paths
 
     public static string Learned => Path.Combine(DataDir, "learned.json");
     public static string Usage => Path.Combine(DataDir, "usage.json");
+    public static string Places => Path.Combine(DataDir, "places.json");
     public static string SettingsFile => Path.Combine(DataDir, "settings.json");
     public static string Status => Path.Combine(DataDir, "status.json");
     public static string UserBrands => Path.Combine(DataDir, "brands");

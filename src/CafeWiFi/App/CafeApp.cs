@@ -12,6 +12,10 @@ public sealed class CafeApp : ApplicationContext
     private readonly Settings settings = Settings.Load();
     private readonly BrandCatalog catalog = BrandCatalog.LoadDefault(Paths.UserBrands);
     private readonly UsageStore usage = new(Paths.Usage);
+    private readonly LearnedStore learned = new(Paths.Learned);
+    private readonly PlaceStore places = new(Paths.Places);
+    private readonly CafeDiscovery discovery;
+    private readonly OwnCafes own;
     private readonly WindowsLocator locator;
     private readonly Joiner joiner;
     private readonly Tracker tracker;
@@ -28,13 +32,16 @@ public sealed class CafeApp : ApplicationContext
         var wifi = new NativeWifiService();
         var net = new Connectivity();
         locator = new WindowsLocator(settings);
-        joiner = new Joiner(wifi, locator, net, catalog, new LearnedStore(Paths.Learned),
-            () => settings.AutoConnect, () => DateTimeOffset.Now);
+        catalog.PersonalName = id => places.Find(id)?.Name;
+        joiner = new Joiner(wifi, locator, net, catalog, learned, () => settings.AutoConnect, () => DateTimeOffset.Now);
+        discovery = new CafeDiscovery(wifi, locator, new OsmCafes(), catalog, learned, places, () => settings.AutoDiscover,
+            () => DateTimeOffset.Now, OnCafeFound);
+        own = new OwnCafes(places, learned, discovery, wifi, catalog);
         portal = new PortalWatcher(wifi, net, catalog, PortalDir, dir => portalCapture.CaptureAsync(dir),
             () => DateTimeOffset.Now, (text, dir) => Notifier.Show(text, "open:" + dir));
         tracker = new Tracker(joiner.CurrentStoreKey, usage);
         updater = new Updater(settings, text => Notifier.Show(text), () => ui.Post(_ => Quit(), null));
-        tray = new TrayController(joiner, catalog, locator, settings, updater, ShowStats, Quit);
+        tray = new TrayController(joiner, catalog, locator, settings, updater, own, ShowStats, Quit);
         ui = SynchronizationContext.Current ?? new WindowsFormsSynchronizationContext();
 
         joiner.StatusChanged += (status, notify) =>
@@ -54,6 +61,7 @@ public sealed class CafeApp : ApplicationContext
         {
             Auto();
             TrayController.Run(portal.CheckAsync);
+            TrayController.Run(discovery.CheckAsync);
         };
         autoTimer.Start();
         tracker.Start();
@@ -79,9 +87,22 @@ public sealed class CafeApp : ApplicationContext
 
     private static string PortalDir => Path.Combine(Paths.LocalDir, "portal");
 
+    /// <summary>A new independent cafe: say so, with a way out if it isn't one. Runs on a worker thread.</summary>
+    private void OnCafeFound(Place place)
+    {
+        Notifier.Show($"已記下咖啡廳：{place.Name}，開始記錄你在這裡的時間。", button: ("不是咖啡廳", "notcafe:" + place.Id));
+        ui.Post(_ => tray.Update(joiner.CurrentStatus()), null);
+    }
+
     private void OnToast(string action)
     {
         if (action == "location") TrayController.OpenLocationSettings();
+        else if (action.StartsWith("notcafe:", StringComparison.Ordinal))
+        {
+            own.NotCafe(action["notcafe:".Length..]);
+            tray.Update(joiner.CurrentStatus());
+            Notifier.Show("好，已移除，不會再把這個 Wi-Fi 當成咖啡廳。");
+        }
         else if (action.StartsWith("open:", StringComparison.Ordinal) && Directory.Exists(action[5..]))
             Process.Start(new ProcessStartInfo("explorer.exe", $"\"{action[5..]}\"") { UseShellExecute = true });
     }

@@ -65,9 +65,15 @@ public sealed class BrandCatalog
 
     public Store? Find(StoreKey key) => Brand(key.BrandId)?.Named(key.StoreName);
 
+    /// <summary>Names of the user's own cafes (StoreKey "mine/&lt;id&gt;"); set by the app from places.json.</summary>
+    public Func<string, string?>? PersonalName { get; set; }
+
     /// <summary>A store's display name, prefixed with its brand once there's more than one brand.</summary>
-    public string Label(StoreKey key) =>
-        Brands.Count > 1 && Brand(key.BrandId) is { } b ? $"{b.Name} {key.StoreName}" : key.StoreName;
+    public string Label(StoreKey key)
+    {
+        if (key.BrandId == Place.BrandId) return PersonalName?.Invoke(key.StoreName) ?? key.StoreName;
+        return Brands.Count > 1 && Brand(key.BrandId) is { } b ? $"{b.Name} {key.StoreName}" : key.StoreName;
+    }
 
     /// <summary>Stores with coordinates, closest first.</summary>
     public IReadOnlyList<(Brand Brand, Store Store, double Meters)> Nearest(

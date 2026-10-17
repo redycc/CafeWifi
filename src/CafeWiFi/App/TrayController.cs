@@ -17,16 +17,17 @@ public sealed class TrayController : IDisposable
     private readonly ILocator locator;
     private readonly Settings settings;
     private readonly Updater updater;
+    private readonly OwnCafes own;
     private readonly Action showStats;
     private readonly Action exit;
     private readonly System.Windows.Forms.Timer leftClick = new() { Interval = SystemInformation.DoubleClickTime };
     private Status status = new Status.Idle();
 
     public TrayController(Joiner joiner, BrandCatalog catalog, ILocator locator, Settings settings, Updater updater,
-        Action showStats, Action exit)
+        OwnCafes own, Action showStats, Action exit)
     {
-        (this.joiner, this.catalog, this.locator, this.settings, this.updater, this.showStats, this.exit) =
-            (joiner, catalog, locator, settings, updater, showStats, exit);
+        (this.joiner, this.catalog, this.locator, this.settings, this.updater, this.own, this.showStats, this.exit) =
+            (joiner, catalog, locator, settings, updater, own, showStats, exit);
         menu.Opening += (_, _) => Rebuild();
         icon.ContextMenuStrip = menu;
         // Left click opens the same menu, like the Mac menu bar; double click opens stats.
@@ -120,6 +121,8 @@ public sealed class TrayController : IDisposable
                 return (ToolStripItem)brandItem;
             }));
         items.Add(all);
+        if (OwnCafesMenu() is { } mine) items.Add(mine);
+        if (own.UnknownNetwork() is { } ssid) items.Add(Action("把這裡記成咖啡廳…", () => AddHere(ssid)));
         items.Add(new ToolStripSeparator());
 
         items.Add(Action("連線統計…", showStats));
@@ -133,6 +136,7 @@ public sealed class TrayController : IDisposable
             if (on) Run(joiner.AutoConnectAsync);
         }));
         items.Add(Toggle("只顯示連過的門市", onlyKnown, on => { settings.OnlyKnown = on; settings.Save(); }));
+        items.Add(Toggle("自動記住咖啡廳", settings.AutoDiscover, on => { settings.AutoDiscover = on; settings.Save(); }));
         items.Add(Toggle("開機時啟動", Startup.Enabled, Startup.Set));
         items.Add(Action("不在系統匣顯示…", HideIcon));
         items.Add(new ToolStripSeparator());
@@ -173,7 +177,8 @@ public sealed class TrayController : IDisposable
         store.Passwords.Select(p => (ToolStripItem)Action(p, () => Connect(brand, store, p)))
             .Append(Action("輸入密碼…", () =>
             {
-                if (PasswordDialog.Ask(Label(brand, store), store.Passwords.FirstOrDefault()) is { } typed)
+                if (InputDialog.Ask($"輸入{Label(brand, store)}的 Wi-Fi 密碼", "照店內張貼的密碼輸入。連上之後會記住，下次自動使用。",
+                        store.Passwords.FirstOrDefault()) is { } typed)
                     Connect(brand, store, typed);
             }));
 
@@ -182,6 +187,39 @@ public sealed class TrayController : IDisposable
         var item = onClick is null ? new ToolStripMenuItem(text) : Action(text, onClick);
         item.ToolTipText = $"{store.Address}\n{store.Phone}";
         return item;
+    }
+
+    /// <summary>"我的咖啡廳": independent cafes we've recognized, with their passwords at hand.</summary>
+    private ToolStripMenuItem? OwnCafesMenu()
+    {
+        var places = own.Places;
+        if (places.Count == 0) return null;
+        var menuItem = new ToolStripMenuItem($"我的咖啡廳（{places.Count}）");
+        Lazy(menuItem, () => places.OrderBy(p => p.Name, StringComparer.CurrentCulture).Select(place =>
+        {
+            var tip = new[] { place.City, place.Address, $"Wi-Fi：{place.Ssid}" }.Where(s => s is not null);
+            var item = new ToolStripMenuItem(place.Name) { ToolTipText = string.Join(Environment.NewLine, tip) };
+            Lazy(item, () =>
+            {
+                var password = own.PasswordFor(place);
+                ToolStripItem passwordItem = password switch
+                {
+                    null => Disabled("沒有記錄到密碼"),
+                    "" => Disabled("不需要密碼"),
+                    _ => Action($"複製 Wi-Fi 密碼：{password}", () => Clipboard.SetText(password)),
+                };
+                return new[] { passwordItem, new ToolStripSeparator(), Action("不是咖啡廳，移除", () => own.NotCafe(place.Id)) };
+            });
+            return (ToolStripItem)item;
+        }));
+        return menuItem;
+    }
+
+    private void AddHere(string ssid)
+    {
+        if (InputDialog.Ask("把這裡記成咖啡廳", "輸入店名。之後連上這個 Wi-Fi 就會記錄你在這裡的時間，也會出現在足跡地圖上。",
+                initial: ssid) is { } name)
+            Run(async () => { if (await own.AddCurrentAsync(name) is { } place) Notifier.Show($"已記下咖啡廳：{place.Name}"); });
     }
 
     private string Label(Brand brand, Store store) => catalog.Label(new StoreKey(brand.Id, store.Name));

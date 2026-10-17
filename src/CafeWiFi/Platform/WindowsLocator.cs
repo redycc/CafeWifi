@@ -46,6 +46,15 @@ public sealed class WindowsLocator : ILocator
         }
     }
 
+    public async Task<GeoPoint?> RefreshAsync()
+    {
+        if (geolocator is null) return null;
+        try { Store(await geolocator.GetGeopositionAsync(TimeSpan.FromMinutes(2), TimeSpan.FromSeconds(10))); }
+        catch (Exception ex) { Log.Write($"location refresh failed: {ex.Message}"); }
+        // An old fix may be from somewhere else entirely; better no answer than the wrong cafe.
+        return settings.LastFixTime is { } at && DateTimeOffset.Now - at < TimeSpan.FromMinutes(10) ? Location : null;
+    }
+
     private void Store(Geoposition position)
     {
         var p = position.Coordinate.Point.Position;

@@ -56,6 +56,7 @@ internal sealed class FakeLocator : ILocator
     public GeoPoint? Location { get; set; }
     public bool Authorized { get; set; } = true;
     public event Action? Changed { add { } remove { } }
+    public Task<GeoPoint?> RefreshAsync() => Task.FromResult(Location);
 }
 
 internal sealed class FakeNet : IConnectivity

@@ -22,12 +22,15 @@ public static class Notifier
         };
     }
 
-    public static void Show(string text, string? action = null)
+    /// <param name="action">Raised when the toast itself is clicked.</param>
+    /// <param name="button">An extra button and the action it raises.</param>
+    public static void Show(string text, string? action = null, (string Text, string Action)? button = null)
     {
         try
         {
             var toast = new ToastContentBuilder().AddText("CafeWiFi").AddText(text);
             if (action is not null) toast.AddArgument("action", action);
+            if (button is { } b) toast.AddButton(new ToastButton().SetContent(b.Text).AddArgument("action", b.Action));
             // One status toast at a time: a newer one replaces the older.
             toast.Show(t => t.Tag = Tag);
         }

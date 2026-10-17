@@ -106,6 +106,23 @@ public sealed class LearnedStore
         }
     }
 
+    /// <summary>Forgets every router learned for this store.</summary>
+    public void Forget(StoreKey store)
+    {
+        lock (gate)
+        {
+            foreach (var bssid in map.Where(m => m.Value.Store == store.ToString()).Select(m => m.Key).ToList()) map.Remove(bssid);
+            try { JsonFile.Save(path, map); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { Log.Write($"cannot save learned: {ex.Message}"); }
+        }
+    }
+
+    /// <summary>The password that worked at this store, if we've joined it.</summary>
+    public string? PasswordFor(StoreKey store)
+    {
+        lock (gate) return map.Values.FirstOrDefault(l => l.Store == store.ToString())?.Password;
+    }
+
     /// <summary>StoreKey strings of every store we've joined.</summary>
     public IReadOnlySet<string> KnownStores()
     {

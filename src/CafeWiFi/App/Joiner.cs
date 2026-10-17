@@ -44,13 +44,23 @@ public sealed class Joiner
     public Status CurrentStatus()
     {
         if (!wifi.HasInterface || wifi.CurrentLink() is not { } link) return new Status.Idle();
-        return catalog.BrandForSsid(link.Ssid) is null ? new Status.Idle() : new Status.Connected(CurrentStoreLabel(), link.Ssid);
+        if (catalog.BrandForSsid(link.Ssid) is not null) return new Status.Connected(CurrentStoreLabel(), link.Ssid);
+        // One of the user's own cafes.
+        return CurrentStoreKey() is { } key ? new Status.Connected(catalog.Label(key), link.Ssid) : new Status.Idle();
     }
 
-    /// <summary>The cafe store we're on, or the brand's 未知門市 if we haven't learned this router; null off cafe Wi-Fi.</summary>
+    /// <summary>
+    /// The cafe we're at: a chain store (or its 未知門市 if we haven't learned this router) or one
+    /// of the user's own cafes; null off cafe Wi-Fi.
+    /// </summary>
     public StoreKey? CurrentStoreKey()
     {
-        if (wifi.CurrentLink() is not { } link || catalog.BrandForSsid(link.Ssid) is not { } brand) return null;
+        if (wifi.CurrentLink() is not { } link) return null;
+        if (catalog.BrandForSsid(link.Ssid) is not { } brand)
+        {
+            return link.Bssid is not null && learned.Lookup(link.Bssid) is { } own && StoreKey.Parse(own.Store) is { BrandId: Place.BrandId } key
+                ? key : null;
+        }
         if (link.Bssid is not null && learned.Lookup(link.Bssid) is { } l)
         {
             var key = StoreKey.Parse(l.Store);

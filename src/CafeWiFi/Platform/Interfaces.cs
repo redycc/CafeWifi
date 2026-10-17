@@ -40,4 +40,7 @@ public interface ILocator
     GeoPoint? Location { get; }
     bool Authorized { get; }
     event Action? Changed;
+
+    /// <summary>A fresh fix (we're online, so it's accurate), or null if there's none from the last few minutes.</summary>
+    Task<GeoPoint?> RefreshAsync();
 }
