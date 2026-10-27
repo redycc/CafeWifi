@@ -18,28 +18,40 @@ public sealed class PortalWatcher
     private readonly BrandCatalog catalog;
     private readonly string root;
     private readonly Func<string, Task<PortalResult>> capture;
+    private readonly Func<Task<bool>> accept;
     private readonly Func<DateTimeOffset> clock;
-    private readonly Action<string, string> notify;
+    private readonly Action<string, string?> notify;
     private readonly Dictionary<string, DateTimeOffset> last = new();
     private int running;
 
     /// <param name="root">Captures go to root\&lt;brand&gt;-&lt;time&gt;.</param>
-    /// <param name="notify">Text and the capture's folder.</param>
+    /// <param name="accept">Try to accept the terms without a browser; true if we're now online.</param>
+    /// <param name="notify">Text and the capture's folder (null when there's no folder to open).</param>
     public PortalWatcher(IWifi wifi, IConnectivity net, BrandCatalog catalog, string root,
-        Func<string, Task<PortalResult>> capture, Func<DateTimeOffset> clock, Action<string, string> notify)
+        Func<string, Task<PortalResult>> capture, Func<Task<bool>> accept, Func<DateTimeOffset> clock, Action<string, string?> notify)
     {
-        (this.wifi, this.net, this.catalog, this.root, this.capture, this.clock, this.notify) =
-            (wifi, net, catalog, root, capture, clock, notify);
+        (this.wifi, this.net, this.catalog, this.root, this.capture, this.accept, this.clock, this.notify) =
+            (wifi, net, catalog, root, capture, accept, clock, notify);
     }
 
     public async Task CheckAsync()
     {
         if (catalog.BrandForSsid(wifi.CurrentLink()?.Ssid) is not { IsOpen: true } brand) return;
-        if (last.TryGetValue(brand.Id, out var at) && clock() - at < Every) return;
         if (Interlocked.Exchange(ref running, 1) == 1) return;
         try
         {
             if (await net.IsOnlineAsync()) return;
+
+            // Accept the terms for us if we recognise the portal; keep trying until we're online.
+            if (await accept())
+            {
+                notify($"已自動連上{brand.Name}，並替你同意了使用條款。", null);
+                return;
+            }
+
+            // Otherwise save the terms page (at most once per brand every six hours) so the user can accept it,
+            // and so a new portal type can be taught later.
+            if (last.TryGetValue(brand.Id, out var at) && clock() - at < Every) return;
             var now = clock();
             last[brand.Id] = now;
             var dir = Path.Combine(root, $"{brand.Id}-{now.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture)}");

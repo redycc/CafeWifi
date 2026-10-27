@@ -38,7 +38,8 @@ public sealed class CafeApp : ApplicationContext
             () => DateTimeOffset.Now, OnCafeFound);
         own = new OwnCafes(places, learned, discovery, wifi, catalog);
         portal = new PortalWatcher(wifi, net, catalog, PortalDir, dir => portalCapture.CaptureAsync(dir),
-            () => DateTimeOffset.Now, (text, dir) => Notifier.Show(text, "open:" + dir));
+            () => settings.AutoAcceptTerms ? portalCapture.TryAcceptAsync() : Task.FromResult(false),
+            () => DateTimeOffset.Now, (text, dir) => Notifier.Show(text, dir is null ? null : "open:" + dir));
         tracker = new Tracker(joiner.CurrentStoreKey, usage);
         updater = new Updater(settings, text => Notifier.Show(text), () => ui.Post(_ => Quit(), null));
         tray = new TrayController(joiner, catalog, locator, settings, updater, own, ShowStats, () => ShowStats("footprint"), Quit);

@@ -29,7 +29,10 @@ public sealed partial class PortalCapture
         http.DefaultRequestHeaders.UserAgent.ParseAdd(BrowserAgent);
     }
 
-    public async Task<PortalResult> CaptureAsync(string dir, CancellationToken ct = default)
+    /// <summary>Walk from the NCSI probe through redirects to the terms page, keeping every hop.</summary>
+    private sealed record Walk(Uri? Final, bool Online, List<object> Hops, List<string> Pages, string Body);
+
+    private async Task<Walk> WalkAsync(CancellationToken ct)
     {
         var hops = new List<object>();
         var pages = new List<string>();
@@ -42,7 +45,7 @@ public sealed partial class PortalCapture
             using var res = await http.GetAsync(url, ct);
             body = await res.Content.ReadAsStringAsync(ct);
             if (hops.Count == 0 && res.IsSuccessStatusCode && body.Trim() == "Microsoft Connect Test")
-                return new PortalResult(false, dir, 0, null); // the internet works: no portal
+                return new Walk(null, true, hops, pages, body); // the internet works: no portal
 
             var location = res.Headers.Location;
             hops.Add(new
@@ -59,6 +62,35 @@ public sealed partial class PortalCapture
                 ? new Uri(url, location)
                 : NextFromPage(url, body);
         }
+        return new Walk(final, false, hops, pages, body);
+    }
+
+    /// <summary>
+    /// Accept a Ruckus guest portal's terms without a browser, by replaying the grant XHR built
+    /// from the captive redirect URL. Returns false if we're already online or it isn't a portal we know.
+    /// </summary>
+    public async Task<bool> TryAcceptAsync(CancellationToken ct = default)
+    {
+        var walk = await WalkAsync(ct);
+        if (walk.Online || walk.Final is null || RuckusPortal.Authorize(walk.Final.ToString()) is not { } req) return false;
+
+        using var msg = new HttpRequestMessage(HttpMethod.Post, req.Url)
+        {
+            Content = new StringContent(req.Json, System.Text.Encoding.UTF8, "application/json"),
+        };
+        msg.Headers.Referrer = walk.Final;          // the portal page, like the browser sends
+        msg.Headers.Add("Origin", $"{walk.Final.Scheme}://{walk.Final.Host}");
+        using var res = await http.SendAsync(msg, ct);
+        var ok = RuckusPortal.Succeeded(await res.Content.ReadAsStringAsync(ct));
+        Log.Write($"portal accept {(ok ? "ok" : "failed")}: {req.Url} → {(int)res.StatusCode}");
+        return ok;
+    }
+
+    public async Task<PortalResult> CaptureAsync(string dir, CancellationToken ct = default)
+    {
+        var walk = await WalkAsync(ct);
+        if (walk.Online) return new PortalResult(false, dir, 0, null);
+        var (hops, pages, body, final) = (walk.Hops, walk.Pages, walk.Body, walk.Final);
 
         Directory.CreateDirectory(dir);
         for (int i = 0; i < pages.Count; i++) await File.WriteAllTextAsync(Path.Combine(dir, $"hop{i}.html"), pages[i], ct);

@@ -11,6 +11,8 @@ public sealed class Settings
     public bool HideTrayIcon { get; set; }
     /// <summary>Look up new Wi-Fi networks on OpenStreetMap and remember independent cafes.</summary>
     public bool AutoDiscover { get; set; } = true;
+    /// <summary>On an open brand's Wi-Fi, accept a recognised terms page (e.g. Starbucks) automatically.</summary>
+    public bool AutoAcceptTerms { get; set; } = true;
     public double? LastLat { get; set; }
     public double? LastLng { get; set; }
     public DateTimeOffset? LastFixTime { get; set; }

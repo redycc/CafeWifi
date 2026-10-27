@@ -11,13 +11,20 @@ internal sealed class FakeHttp : HttpMessageHandler
 {
     public Dictionary<string, Func<HttpResponseMessage>> Routes { get; } = new();
     public List<string> Requested { get; } = new();
+    public List<(string Url, string Body, string? Referer)> Posts { get; } = new();
 
-    protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+    protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
     {
         var url = request.RequestUri!.ToString();
         Requested.Add(url);
-        return Task.FromResult(Routes.TryGetValue(url, out var make) ? make() : new HttpResponseMessage(HttpStatusCode.NotFound));
+        if (request.Method == HttpMethod.Post)
+            Posts.Add((url, request.Content is null ? "" : await request.Content.ReadAsStringAsync(ct),
+                request.Headers.Referrer?.ToString()));
+        return Routes.TryGetValue(url, out var make) ? make() : new HttpResponseMessage(HttpStatusCode.NotFound);
     }
+
+    public static HttpResponseMessage Json(string body) =>
+        new(HttpStatusCode.OK) { Content = new StringContent(body, System.Text.Encoding.UTF8, "application/json") };
 
     public static HttpResponseMessage Html(string body) => new(HttpStatusCode.OK) { Content = new StringContent(body) };
 
@@ -110,6 +117,52 @@ public class PortalTests : IDisposable
         Assert.True(result.Hops <= PortalCapture.MaxHops);
     }
 
+    // MARK: accept
+
+    private const string RuckusPortalUrl =
+        "https://asia.ruckus.cloud/g/ui/tenant/T1/portal?nbiIP=nbi.example&client_mac=ENCmac" +
+        "&wlanName=NET-GUID&proxy=0&uip=ENCip&wlan=1121&StartURL=https%3A%2F%2Fexample.com%2Fhome";
+
+    private static FakeHttp RuckusLike(string grantResponse)
+    {
+        var http = new FakeHttp();
+        http.Routes[Probe] = () => FakeHttp.Redirect(RuckusPortalUrl);
+        http.Routes[RuckusPortalUrl] = () => FakeHttp.Html("<html><body><div id=\"root\"></div></body></html>");
+        http.Routes["https://asia.ruckus.cloud/g/guest/api/tenant/T1/portal/anonymous"] = () => FakeHttp.Json(grantResponse);
+        return http;
+    }
+
+    [Fact]
+    public async Task Accept_PostsRuckusGrant_FromRedirectParams_AndReportsSuccess()
+    {
+        var http = RuckusLike("""{"info":{"ReplyMessage":"Login succeeded","ResponseCode":"201"}}""");
+
+        var accepted = await new PortalCapture(http).TryAcceptAsync();
+
+        Assert.True(accepted);
+        var post = Assert.Single(http.Posts);
+        Assert.Equal("https://asia.ruckus.cloud/g/guest/api/tenant/T1/portal/anonymous", post.Url);
+        Assert.Equal(RuckusPortalUrl, post.Referer); // the portal page, like the browser sends
+        using var body = JsonDocument.Parse(post.Body);
+        Assert.Equal("NET-GUID", body.RootElement.GetProperty("networkId").GetString());
+        Assert.Equal("ENCmac", body.RootElement.GetProperty("nbiData").GetProperty("clientMac").GetString());
+    }
+
+    [Fact]
+    public async Task Accept_ReturnsFalse_WhenGrantRejected()
+    {
+        var http = RuckusLike("""{"info":{"ResponseCode":"401"}}""");
+        Assert.False(await new PortalCapture(http).TryAcceptAsync());
+    }
+
+    [Fact]
+    public async Task Accept_ReturnsFalse_WhenAlreadyOnline()
+    {
+        var http = new FakeHttp();
+        http.Routes[Probe] = () => FakeHttp.Html("Microsoft Connect Test");
+        Assert.False(await new PortalCapture(http).TryAcceptAsync());
+    }
+
     // MARK: watcher
 
     private static readonly BrandCatalog Catalog = BrandCatalog.Load(new[]
@@ -118,14 +171,51 @@ public class PortalTests : IDisposable
         JsonSerializer.Serialize(new Brand("louisa", "路易莎", new[] { "LouisaCoffee" }, Array.Empty<Store>()), BrandCatalog.Json),
     }, Array.Empty<string>());
 
-    private (PortalWatcher Watcher, List<string> Captured, List<string> Notes) Watcher(FakeWifi wifi, FakeNet net, Func<DateTimeOffset> clock)
+    private (PortalWatcher Watcher, List<string> Captured, List<string> Notes) Watcher(
+        FakeWifi wifi, FakeNet net, Func<DateTimeOffset> clock, Func<Task<bool>>? accept = null)
     {
         var captured = new List<string>();
         var notes = new List<string>();
         var w = new PortalWatcher(wifi, net, Catalog, dir.Path,
             target => { captured.Add(target); return Task.FromResult(new PortalResult(true, target, 2, "http://portal.test/")); },
+            accept ?? (() => Task.FromResult(false)),
             clock, (text, folder) => notes.Add(text));
         return (w, captured, notes);
+    }
+
+    [Fact]
+    public async Task Watcher_AutoAcceptsTerms_WithoutCapturing()
+    {
+        var wifi = new FakeWifi { Link = new WifiLink("Starbucks WiFi", "aa:00:00:00:00:01") };
+        var accepted = 0;
+        var (w, captured, notes) = Watcher(wifi, new FakeNet(), () => DateTimeOffset.Now,
+            () => { accepted++; return Task.FromResult(true); });
+        await w.CheckAsync();
+        Assert.Equal(1, accepted);
+        Assert.Empty(captured);
+        Assert.Single(notes);
+    }
+
+    [Fact]
+    public async Task Watcher_FallsBackToCapture_WhenAutoAcceptFails()
+    {
+        var wifi = new FakeWifi { Link = new WifiLink("Starbucks WiFi", "aa:00:00:00:00:01") };
+        var (w, captured, notes) = Watcher(wifi, new FakeNet(), () => DateTimeOffset.Now, () => Task.FromResult(false));
+        await w.CheckAsync();
+        Assert.Single(captured);
+        Assert.Single(notes);
+    }
+
+    [Fact]
+    public async Task Watcher_DoesNotAccept_WhenAlreadyOnline()
+    {
+        var wifi = new FakeWifi { Link = new WifiLink("Starbucks WiFi", "aa:00:00:00:00:01") };
+        var accepted = 0;
+        var (w, captured, _) = Watcher(wifi, new FakeNet { Online = true }, () => DateTimeOffset.Now,
+            () => { accepted++; return Task.FromResult(true); });
+        await w.CheckAsync();
+        Assert.Equal(0, accepted);
+        Assert.Empty(captured);
     }
 
     [Fact]
