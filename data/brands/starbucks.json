@@ -2,7 +2,7 @@
  "id": "starbucks",
  "name": "星巴克",
  "ssids": [
-  "Starbucks WiFi"
+  "Starbucks Wi-Fi"
  ],
  "security": "open",
  "stores": [

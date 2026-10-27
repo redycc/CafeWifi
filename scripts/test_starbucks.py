@@ -35,7 +35,7 @@ class Build(unittest.TestCase):
     def test_open_network_brand_without_passwords(self):
         brand = starbucks.build(starbucks.parse(SAMPLE))
         self.assertEqual(brand["security"], "open")
-        self.assertEqual(brand["ssids"], ["Starbucks WiFi"])
+        self.assertEqual(brand["ssids"], ["Starbucks Wi-Fi"])
         self.assertTrue(all(s["passwords"] == [] for s in brand["stores"]))
 
     def test_city_from_address_and_bad_coordinates_zeroed(self):

@@ -90,7 +90,7 @@ public class BrandCatalogTests
     [Fact]
     public void LoadDefault_HasStarbucksAsOpenNetwork()
     {
-        var sbux = BrandCatalog.LoadDefault(userBrandsDir: null).BrandForSsid("Starbucks WiFi");
+        var sbux = BrandCatalog.LoadDefault(userBrandsDir: null).BrandForSsid("Starbucks Wi-Fi");
         Assert.True(sbux?.IsOpen);
         Assert.True(sbux!.Stores.Count > 400);
     }

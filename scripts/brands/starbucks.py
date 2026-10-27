@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Fetch every Starbucks Taiwan store that offers Wi-Fi and write data/brands/starbucks.json.
 
-Starbucks Wi-Fi is an open network ("Starbucks WiFi") behind a terms page, the same in
+Starbucks Wi-Fi is an open network ("Starbucks Wi-Fi") behind a terms page, the same in
 every store, so there are no passwords: the stores are only used to tell, by location,
 which one you're in.
 """
@@ -13,7 +13,7 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-BRAND = {"id": "starbucks", "name": "星巴克", "ssids": ["Starbucks WiFi"], "security": "open"}
+BRAND = {"id": "starbucks", "name": "星巴克", "ssids": ["Starbucks Wi-Fi"], "security": "open"}
 URL = "https://www.starbucks.com.tw/stores/ajax/json_storesearch.aspx"
 OUT = Path(__file__).resolve().parents[2] / "data" / "brands" / "starbucks.json"
 
