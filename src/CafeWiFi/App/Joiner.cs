@@ -32,6 +32,15 @@ public sealed class Joiner
     /// <summary>Raised on a worker thread. The flag says whether to show a notification.</summary>
     public event Action<Status, bool>? StatusChanged;
 
+    /// <summary>
+    /// A nearby independent cafe worth guessing: its SSID, display name, candidate passwords, and a
+    /// callback that persists the place and returns its key, called only once a password works.
+    /// </summary>
+    public sealed record CafePlan(string Ssid, string Name, IReadOnlyList<string> Passwords, Func<Task<StoreKey>> Save);
+
+    /// <summary>Resolves the nearby networks to one cafe worth trying, or null. Set by the app; OSM lives there.</summary>
+    public Func<IReadOnlyList<Bss>, Task<CafePlan?>>? FindCafe { get; set; }
+
     public Joiner(IWifi wifi, ILocator locator, IConnectivity net, BrandCatalog catalog, LearnedStore learned,
         Func<bool> autoEnabled, Func<DateTimeOffset> clock)
     {
@@ -142,7 +151,9 @@ public sealed class Joiner
         var best = bss.Where(b => catalog.BrandForSsid(b.Ssid) is not null).MaxBy(b => b.Rssi);
         if (best is null)
         {
-            if (manual) Report(new Status.Idle(), notify: true);
+            // No chain store nearby: an independent cafe we can guess the password for, maybe.
+            if (!manual) await TryCafeAsync(bss, e);
+            else Report(new Status.Idle(), notify: true);
             return;
         }
         var brand = catalog.BrandForSsid(best.Ssid)!;
@@ -178,6 +189,35 @@ public sealed class Joiner
         if (!Current(e)) return;
         Snooze(nets);
         Report(new Status.Failed("自動連線失敗，請從選單選擇門市"), notify: true);
+    }
+
+    /// <summary>
+    /// Try a nearby independent cafe's Wi-Fi with passwords guessed from its phone number. Only
+    /// speculative, so failures stay quiet; a wrong guess snoozes the router like any other.
+    /// </summary>
+    private async Task TryCafeAsync(IReadOnlyList<Bss> bss, int e)
+    {
+        if (FindCafe is null) return;
+        var fresh = bss.Where(b => !Snoozed(b.Bssid)).ToList();  // snoozed? don't even run the (slow) lookup again
+        if (fresh.Count == 0 || await FindCafe(fresh) is not { } plan) return;
+
+        var nets = fresh.Where(b => b.Ssid == plan.Ssid).OrderByDescending(b => b.Rssi).ToList();
+        if (nets.Count == 0 || plan.Passwords.Count == 0 || !Current(e)) return;
+
+        Report(new Status.Connecting(plan.Name));
+        foreach (var pw in plan.Passwords)
+        {
+            if (!Current(e)) return;
+            if (await Join(nets, pw))
+            {
+                var store = await plan.Save();
+                Remember(nets, store, pw);
+                Report(new Status.Connected(catalog.Label(store), nets[0].Ssid), notify: true);
+                return;
+            }
+        }
+        if (!Current(e)) return;
+        Snooze(nets);
     }
 
     private async Task RunStore(Brand brand, Store store, string? password, int e)
@@ -289,8 +329,9 @@ public sealed class Joiner
         foreach (var n in nets) snoozed[n.Bssid] = clock() + SnoozeFor;
     }
 
-    private bool IsSnoozed(IEnumerable<Bss> nets) =>
-        nets.Any(n => snoozed.TryGetValue(n.Bssid, out var until) && until > clock());
+    private bool IsSnoozed(IEnumerable<Bss> nets) => nets.Any(n => Snoozed(n.Bssid));
+
+    private bool Snoozed(string bssid) => snoozed.TryGetValue(bssid, out var until) && until > clock();
 
     /// <summary>Remember the strongest router plus every router heard well, so the store is recognized from any of them.</summary>
     private void Remember(IReadOnlyList<Bss> nets, StoreKey store, string password) =>

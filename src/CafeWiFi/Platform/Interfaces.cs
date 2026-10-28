@@ -22,6 +22,9 @@ public interface IWifi
     /// <summary>Asks for a fresh scan (waiting up to 4 s), then returns every router in range.</summary>
     Task<IReadOnlyList<Bss>> ScanAsync(CancellationToken ct = default);
 
+    /// <summary>SSIDs of open (passwordless) networks in range, so a password guess can skip them.</summary>
+    IReadOnlySet<string> OpenSsids();
+
     /// <summary>Writes a profile for target.Ssid with this password ("" for an open network) and joins that exact router.</summary>
     Task<bool> TryJoinAsync(Bss target, string password, CancellationToken ct = default);
 

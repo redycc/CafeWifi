@@ -29,6 +29,10 @@ internal sealed class FakeWifi : IWifi
         return Task.FromResult<IReadOnlyList<Bss>>(Nearby.ToList());
     }
 
+    /// <summary>SSIDs the test marks as open (passwordless).</summary>
+    public HashSet<string> Open { get; } = new();
+    public IReadOnlySet<string> OpenSsids() => Open;
+
     /// <summary>Models Windows finishing a WlanConnect we stopped waiting for.</summary>
     public bool JoinLandsEvenIfCancelled { get; set; }
     public int Disconnects { get; private set; }
@@ -495,5 +499,66 @@ public class JoinerTests : IDisposable
         Assert.Equal(new Status.Connected(null, "LouisaCoffee"), j.CurrentStatus());
         Assert.Equal("已連上 LouisaCoffee", j.CurrentStatus().Text);
         Assert.Equal(new StoreKey("louisa", StoreKey.Unknown), j.CurrentStoreKey());
+    }
+
+    // MARK: independent cafe auto-join
+
+    private Joiner Bare()
+    {
+        var j = new Joiner(wifi, locator, net, Catalog, Learned, () => autoOn, () => now);
+        j.StatusChanged += (s, n) => reports.Add((s, n));
+        return j;
+    }
+
+    private static readonly StoreKey Fika = new("mine", "Fika Fika Cafe");
+
+    [Fact]
+    public async Task Auto_NoBrandNetwork_JoinsNearbyCafeByGuess_AndRemembersPlace()
+    {
+        wifi.Nearby.Add(new Bss("FikaFika_5G", "cc:00:00:00:00:01", -45));
+        wifi.CorrectPasswords.Add("23456789");
+        var j = Bare();
+        var saved = 0;
+        j.FindCafe = _ => Task.FromResult<Joiner.CafePlan?>(new Joiner.CafePlan(
+            "FikaFika_5G", "Fika Fika Cafe", new[] { "00000000", "23456789" },
+            () => { saved++; return Task.FromResult(Fika); }));
+
+        await j.AutoConnectAsync();
+
+        Assert.Equal("FikaFika_5G", wifi.Link?.Ssid);
+        Assert.Equal(1, saved);                              // place persisted only after the join worked
+        Assert.Equal(Fika.ToString(), Learned.Lookup("cc:00:00:00:00:01")?.Store);
+        Assert.Equal("23456789", Learned.Lookup("cc:00:00:00:00:01")?.Password);
+    }
+
+    [Fact]
+    public async Task Auto_BrandNetworkPresent_IgnoresCafeGuess()
+    {
+        wifi.Nearby.AddRange(new[] { new Bss("LouisaCoffee", Strong, -50), new Bss("FikaFika_5G", "cc:00:00:00:00:01", -40) });
+        wifi.CorrectPasswords.Add("a1");
+        var called = 0;
+        var j = Bare();
+        j.FindCafe = _ => { called++; return Task.FromResult<Joiner.CafePlan?>(null); };
+
+        await j.AutoConnectAsync();
+
+        Assert.Equal(0, called);                              // a real brand store wins; no speculative cafe guessing
+        Assert.Equal("LouisaCoffee", wifi.Link?.Ssid);
+    }
+
+    [Fact]
+    public async Task Auto_CafeGuessFails_SnoozesAndDoesNotRetryImmediately()
+    {
+        wifi.Nearby.Add(new Bss("FikaFika_5G", "cc:00:00:00:00:01", -45));
+        var calls = 0;
+        var j = Bare();
+        j.FindCafe = _ => { calls++; return Task.FromResult<Joiner.CafePlan?>(new Joiner.CafePlan(
+            "FikaFika_5G", "Fika Fika Cafe", new[] { "00000000" }, () => Task.FromResult(Fika))); };
+
+        await j.AutoConnectAsync();   // all guesses wrong -> snooze
+        await j.AutoConnectAsync();   // snoozed -> must not even ask FindCafe again
+
+        Assert.Null(wifi.Link);
+        Assert.Equal(1, calls);
     }
 }

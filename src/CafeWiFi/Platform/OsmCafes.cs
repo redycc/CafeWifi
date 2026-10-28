@@ -75,7 +75,8 @@ public sealed class OsmCafes : ICafeMap
             if (!point.TryGetProperty("lat", out var lat) || !point.TryGetProperty("lon", out var lon)) continue;
             var street = Tag("addr:street") is { } s ? s + (Tag("addr:housenumber") is { } n ? n + "號" : "") : null;
             cafes.Add(new CafeCandidate($"{e.GetProperty("type").GetString()}/{e.GetProperty("id").GetInt64()}", name.Trim(),
-                lat.GetDouble(), lon.GetDouble(), Tag("addr:city")?.Replace("臺", "台"), Tag("addr:full") ?? street));
+                lat.GetDouble(), lon.GetDouble(), Tag("addr:city")?.Replace("臺", "台"), Tag("addr:full") ?? street,
+                Tag("phone") ?? Tag("contact:phone") ?? Tag("contact:mobile")));
         }
         return cafes;
     }

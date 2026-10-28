@@ -63,6 +63,25 @@ public sealed class NativeWifiService : IWifi
         }
     }
 
+    public IReadOnlySet<string> OpenSsids()
+    {
+        var i = Interface();
+        if (i is null) return new HashSet<string>(StringComparer.Ordinal);
+        try
+        {
+            return NativeWifi.EnumerateAvailableNetworks()
+                .Where(n => n.Interface.Id == i.Id && !n.IsSecurityEnabled)
+                .Select(n => Encoding.UTF8.GetString(n.Ssid.ToBytes()))
+                .Where(s => s.Length > 0)
+                .ToHashSet(StringComparer.Ordinal);
+        }
+        catch (Exception ex) when (ex is Win32Exception or InvalidOperationException)
+        {
+            Log.Write($"available networks failed: {ex.Message}");
+            return new HashSet<string>(StringComparer.Ordinal);
+        }
+    }
+
     public void Disconnect()
     {
         if (Interface() is not { } i) return;

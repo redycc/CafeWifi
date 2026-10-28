@@ -140,6 +140,7 @@ public sealed class TrayController : IDisposable
         items.Add(Toggle("只顯示連過的門市", onlyKnown, on => { settings.OnlyKnown = on; settings.Save(); }));
         items.Add(Toggle("自動記住咖啡廳", settings.AutoDiscover, on => { settings.AutoDiscover = on; settings.Save(); }));
         items.Add(Toggle("自動同意使用條款", settings.AutoAcceptTerms, on => { settings.AutoAcceptTerms = on; settings.Save(); }));
+        items.Add(Toggle("自動猜咖啡廳密碼", settings.AutoGuessCafe, on => { settings.AutoGuessCafe = on; settings.Save(); }));
         items.Add(Toggle("開機時啟動", Startup.Enabled, Startup.Set));
         items.Add(Action("不在系統匣顯示…", HideIcon));
         items.Add(new ToolStripSeparator());

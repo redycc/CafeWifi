@@ -18,7 +18,7 @@ public sealed record Place(string Id, string Name, string Ssid, double Lat, doub
 }
 
 /// <summary>A cafe on the map near us, from OpenStreetMap.</summary>
-public sealed record CafeCandidate(string Id, string Name, double Lat, double Lng, string? City, string? Address);
+public sealed record CafeCandidate(string Id, string Name, double Lat, double Lng, string? City, string? Address, string? Phone = null);
 
 /// <summary>
 /// places.json: the user's own cafes, Wi-Fi names they said aren't cafes, and routers already

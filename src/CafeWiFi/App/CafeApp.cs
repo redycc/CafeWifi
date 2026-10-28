@@ -33,9 +33,12 @@ public sealed class CafeApp : ApplicationContext
         var net = new Connectivity();
         locator = new WindowsLocator(settings);
         catalog.PersonalName = id => places.Find(id)?.Name;
+        var map = new OsmCafes();
         joiner = new Joiner(wifi, locator, net, catalog, learned, () => settings.AutoConnect, () => DateTimeOffset.Now);
-        discovery = new CafeDiscovery(wifi, locator, new OsmCafes(), catalog, learned, places, () => settings.AutoDiscover,
+        discovery = new CafeDiscovery(wifi, locator, map, catalog, learned, places, () => settings.AutoDiscover,
             () => DateTimeOffset.Now, OnCafeFound);
+        joiner.FindCafe = new CafeFinder(wifi, locator, map, catalog, learned, places,
+            () => settings.AutoGuessCafe, () => DateTimeOffset.Now).FindAsync;
         own = new OwnCafes(places, learned, discovery, wifi, catalog);
         portal = new PortalWatcher(wifi, net, catalog, PortalDir, dir => portalCapture.CaptureAsync(dir),
             () => settings.AutoAcceptTerms ? portalCapture.TryAcceptAsync() : Task.FromResult(false),

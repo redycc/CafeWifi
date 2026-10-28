@@ -13,6 +13,8 @@ public sealed class Settings
     public bool AutoDiscover { get; set; } = true;
     /// <summary>On an open brand's Wi-Fi, accept a recognised terms page (e.g. Starbucks) automatically.</summary>
     public bool AutoAcceptTerms { get; set; } = true;
+    /// <summary>Guess an independent cafe's Wi-Fi password from its phone number (from OpenStreetMap). Off by default: speculative.</summary>
+    public bool AutoGuessCafe { get; set; }
     public double? LastLat { get; set; }
     public double? LastLng { get; set; }
     public DateTimeOffset? LastFixTime { get; set; }
